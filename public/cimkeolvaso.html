@@ -1,0 +1,1702 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Dell Service Tag címkeolvasó</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+</head>
+<body>
+<style>
+:root{
+  --bg:#f1f3f5;
+  --surface:#ffffff;
+  --surface-2:#e8ebee;
+  --ink:#1b222c;
+  --ink-muted:#5c6673;
+  --ink-faint:#8791a0;
+  --border:#dde2e7;
+  --accent:#2a63e0;
+  --accent-ink:#f4f7ff;
+  --tag:#c97b1f;
+  --tag-bg:#fbf0de;
+  --good:#1f7a4d;
+  --good-bg:#e6f4ec;
+  --bad:#c1443c;
+  --bad-bg:#fbe9e7;
+  --shadow: 0 1px 2px rgba(27,34,44,0.06), 0 8px 24px -12px rgba(27,34,44,0.12);
+  --radius: 12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171c; --surface:#1b1f26; --surface-2:#232830;
+    --ink:#e7eaee; --ink-muted:#a4acb8; --ink-faint:#707988;
+    --border:#2b313b; --accent:#6d97ff; --accent-ink:#0d1526;
+    --tag:#f0b25c; --tag-bg:#2e2513; --good:#5cc793; --good-bg:#173226;
+    --bad:#ff8178; --bad-bg:#3a1d1a;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px -14px rgba(0,0,0,0.6);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14171c; --surface:#1b1f26; --surface-2:#232830;
+  --ink:#e7eaee; --ink-muted:#a4acb8; --ink-faint:#707988;
+  --border:#2b313b; --accent:#6d97ff; --accent-ink:#0d1526;
+  --tag:#f0b25c; --tag-bg:#2e2513; --good:#5cc793; --good-bg:#173226;
+  --bad:#ff8178; --bad-bg:#3a1d1a;
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px -14px rgba(0,0,0,0.6);
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'Source Sans 3', system-ui, -apple-system, sans-serif;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,button,.mono{
+  font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+}
+.page{ max-width:520px; margin:0 auto; padding:20px 16px 64px; }
+
+/* header */
+.topbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
+.topbar h1{ font-size:1.15rem; margin:0; font-weight:600; letter-spacing:-0.01em; }
+.pill{
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;
+  padding:5px 10px; border-radius:999px; white-space:nowrap;
+}
+.pill.shared{ background:var(--good-bg); color:var(--good); }
+.pill.local{ background:var(--surface-2); color:var(--ink-muted); }
+.pill.readonly{ background:var(--bad-bg); color:var(--bad); }
+.pill .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+/* settings row */
+.settings{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:14px; margin-bottom:14px;
+  display:flex; flex-direction:column; gap:12px;
+}
+.field-label{
+  font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--ink-muted); display:block; margin-bottom:6px;
+}
+.name-input{
+  width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
+  background:var(--bg); color:var(--ink); font-size:15px; font-family:inherit;
+}
+.name-input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+.segmented{ display:flex; gap:6px; }
+.segmented button{
+  flex:1; padding:10px 8px; border-radius:8px; border:1px solid var(--border);
+  background:var(--bg); color:var(--ink-muted); font-size:13.5px; font-weight:600;
+  cursor:pointer; transition:background .15s, color .15s, border-color .15s;
+}
+.segmented button.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.segmented button:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+/* camera card */
+.camera-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:var(--shadow); overflow:hidden; margin-bottom:14px;
+}
+.camera-wrap{
+  position:relative; width:100%; aspect-ratio:3/4; background:#0b0d10;
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
+}
+.camera-wrap video{
+  position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  display:none;
+}
+.camera-wrap.active video{ display:block; }
+.camera-placeholder{
+  color:#9aa4b2; text-align:center; padding:24px; font-size:14px; max-width:70%;
+}
+.camera-wrap.active .camera-placeholder{ display:none; }
+.scan-frame{
+  position:absolute; inset:14% 16%; pointer-events:none; display:none;
+}
+.camera-wrap.active .scan-frame{ display:block; }
+.scan-frame .corner{ position:absolute; width:28px; height:28px; border:3px solid var(--accent); }
+.scan-frame .corner.tl{ top:0; left:0; border-right:none; border-bottom:none; border-top-left-radius:6px; }
+.scan-frame .corner.tr{ top:0; right:0; border-left:none; border-bottom:none; border-top-right-radius:6px; }
+.scan-frame .corner.bl{ bottom:0; left:0; border-right:none; border-top:none; border-bottom-left-radius:6px; }
+.scan-frame .corner.br{ bottom:0; right:0; border-left:none; border-top:none; border-bottom-right-radius:6px; }
+.scan-frame.flash .corner{ border-color:var(--good); }
+.torch-btn{
+  position:absolute; top:10px; right:10px; width:38px; height:38px; border-radius:50%;
+  background:rgba(20,23,28,0.55); color:#fff; border:1px solid rgba(255,255,255,0.25);
+  display:none; align-items:center; justify-content:center; font-size:16px; cursor:pointer;
+}
+.camera-wrap.active .torch-btn.supported{ display:flex; }
+.torch-btn.on{ background:var(--tag); border-color:var(--tag); }
+
+.camera-controls{ padding:12px 14px 14px; display:flex; flex-direction:column; gap:8px; }
+.btn{
+  appearance:none; border:none; border-radius:9px; padding:13px 16px; font-size:15px;
+  font-weight:600; font-family:'Source Sans 3', sans-serif; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:8px; min-height:46px;
+}
+.btn-primary{ background:var(--accent); color:var(--accent-ink); }
+.btn-secondary{ background:var(--surface-2); color:var(--ink); }
+.btn:active{ transform:translateY(1px); }
+.status-line{
+  font-size:13.5px; color:var(--ink-muted); text-align:center; min-height:18px;
+}
+.status-line.success{ color:var(--good); font-weight:600; }
+.status-line.warn{ color:var(--tag); font-weight:600; }
+.status-line.error{ color:var(--bad); font-weight:600; }
+
+/* photo review + tap-to-pick */
+.photo-review{ display:none; flex-direction:column; gap:10px; padding:12px 14px 14px; border-top:1px solid var(--border); }
+.photo-review.open{ display:flex; }
+.review-hint{ margin:0; font-size:13.5px; color:var(--tag); font-weight:600; text-align:center; }
+.review-imgwrap{
+  position:relative; width:100%; background:#0b0d10; border-radius:9px; overflow:hidden;
+  display:flex; align-items:center; justify-content:center; cursor:crosshair;
+}
+.review-imgwrap img{ display:block; max-width:100%; max-height:52vh; }
+.review-marker{
+  position:absolute; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%;
+  border:3px solid var(--good); box-shadow:0 0 0 2px rgba(0,0,0,.35); display:none; pointer-events:none;
+}
+.review-marker.show{ display:block; }
+
+/* PPID kiegészítő panel */
+.ppid-panel{ display:none; flex-direction:column; gap:10px; padding:14px; border-top:1px solid var(--border); background:var(--tag-bg); }
+.ppid-panel.open{ display:flex; }
+.ppid-panel .ppid-title{ margin:0; font-size:13.5px; font-weight:600; color:var(--tag); }
+.ppid-panel .ppid-code{
+  font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink);
+  background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:8px 10px;
+  overflow-x:auto; white-space:nowrap;
+}
+.ppid-panel .ppid-explain{ margin:0; font-size:12.5px; color:var(--ink-muted); }
+.ppid-panel input{
+  width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:8px;
+  background:var(--surface); color:var(--ink); font-size:16px; font-family:'IBM Plex Mono',monospace;
+  text-transform:uppercase;
+}
+.ppid-panel .ppid-actions{ display:flex; gap:8px; }
+.ppid-panel .ppid-actions .btn{ flex:1; min-height:42px; padding:10px 12px; font-size:13.5px; }
+.ppid-derived{ margin:0; font-size:12.5px; font-weight:600; color:var(--good); min-height:16px; }
+
+/* master list */
+.master-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:var(--shadow); margin-bottom:14px; overflow:hidden;
+}
+.master-toggle{
+  width:100%; text-align:left; background:none; border:none; color:var(--ink);
+  font-size:14px; font-family:'Source Sans 3', sans-serif; font-weight:600; cursor:pointer;
+  padding:14px; display:flex; align-items:center; gap:8px;
+}
+.master-toggle .chevron{ transition:transform .15s; font-size:11px; color:var(--ink-muted); }
+.master-toggle.open .chevron{ transform:rotate(90deg); }
+.master-toggle .master-summary{
+  margin-left:auto; font-weight:500; font-size:12.5px; color:var(--ink-muted);
+  font-family:'IBM Plex Mono',monospace; text-align:right;
+}
+.master-body{ display:none; padding:0 14px 16px; flex-direction:column; gap:12px; }
+.master-body.open{ display:flex; }
+.master-body .section-intro{ margin:0; font-size:13.5px; color:var(--ink-muted); }
+.file-input{
+  width:100%; font-size:13.5px; padding:9px; border:1px dashed var(--border); border-radius:8px;
+  background:var(--bg); color:var(--ink-muted);
+}
+.master-body select{
+  width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
+  background:var(--bg); color:var(--ink); font-size:14.5px; font-family:'Source Sans 3',sans-serif;
+}
+.progress-row{ display:flex; align-items:center; gap:10px; }
+.progress-track{
+  flex:1; height:8px; border-radius:999px; background:var(--surface-2); overflow:hidden;
+}
+.progress-fill{ height:100%; background:var(--good); border-radius:999px; width:0%; transition:width .3s; }
+.progress-row .progress-text{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-muted); white-space:nowrap;
+}
+.master-actions{ display:flex; gap:8px; }
+.master-actions .btn{ min-height:40px; padding:9px 12px; font-size:13px; flex:1; }
+.scan-row .badge.match-yes{ background:var(--good-bg); color:var(--good); }
+.scan-row .badge.match-no{ background:var(--bad-bg); color:var(--bad); }
+
+/* manual entry */
+.manual{ margin-bottom:14px; }
+.manual-toggle{
+  width:100%; text-align:left; background:none; border:none; color:var(--ink-muted);
+  font-size:13.5px; font-family:'Source Sans 3', sans-serif; font-weight:600; cursor:pointer;
+  padding:8px 2px; display:flex; align-items:center; gap:6px;
+}
+.manual-toggle .chevron{ transition:transform .15s; font-size:11px; }
+.manual-toggle.open .chevron{ transform:rotate(90deg); }
+.manual-body{ display:none; gap:8px; margin-top:6px; }
+.manual-body.open{ display:flex; }
+.manual-body input{
+  flex:1; padding:11px 12px; border:1px solid var(--border); border-radius:8px;
+  background:var(--surface); color:var(--ink); font-size:15px; font-family:'IBM Plex Mono',monospace;
+}
+.manual-body button{
+  padding:11px 16px; border-radius:8px; border:none; background:var(--ink); color:var(--bg);
+  font-weight:600; font-family:'Source Sans 3',sans-serif; cursor:pointer;
+}
+
+/* list */
+.list-head{ display:flex; align-items:baseline; justify-content:space-between; margin:20px 0 8px; }
+.list-head h2{
+  font-size:11px; text-transform:uppercase; letter-spacing:0.07em; color:var(--ink-muted);
+  margin:0; font-weight:600;
+}
+.list-head .count{ font-size:11px; color:var(--ink-faint); font-family:'IBM Plex Mono',monospace; }
+.scan-list{ display:flex; flex-direction:column; gap:8px; }
+.scan-row{
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:11px 12px; display:flex; align-items:center; gap:10px;
+}
+.scan-row .tag-val{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14.5px; }
+.scan-row .meta{ font-size:12px; color:var(--ink-faint); margin-top:2px; }
+.scan-row .badge{
+  font-size:10.5px; font-weight:600; padding:3px 7px; border-radius:6px;
+  background:var(--surface-2); color:var(--ink-muted); text-transform:uppercase; letter-spacing:.03em;
+  white-space:nowrap;
+}
+.scan-row .badge.manual{ background:var(--tag-bg); color:var(--tag); }
+.scan-row .grow{ flex:1; min-width:0; }
+.scan-row .del{
+  background:none; border:none; color:var(--ink-faint); font-size:18px; cursor:pointer;
+  padding:6px; line-height:1; border-radius:6px;
+}
+.scan-row .del:hover{ color:var(--bad); background:var(--bad-bg); }
+.empty-state{
+  text-align:center; color:var(--ink-faint); font-size:13.5px; padding:28px 10px;
+  border:1px dashed var(--border); border-radius:var(--radius);
+}
+
+footer.appfoot{
+  margin-top:22px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5px; }
+.foot-note{ font-size:11.5px; color:var(--ink-faint); text-align:center; margin-top:14px; }
+.export-actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.export-actions .btn{ min-height:40px; padding:9px 14px; font-size:13.5px; }
+.runtime-warning{
+  display:none; margin-bottom:14px; padding:10px 12px; border-radius:9px;
+  background:var(--tag-bg); color:var(--tag); font-size:13px; border:1px solid currentColor;
+}
+.runtime-warning.show{ display:block; }
+
+@media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+
+<div class="page">
+
+  <div class="topbar">
+    <h1>Dell Service Tag címkeolvasó</h1>
+    <span id="statusPill" class="pill local" role="status"><span class="dot"></span>Betöltés&hellip;</span>
+  </div>
+
+  <div class="runtime-warning" id="runtimeWarning" role="alert"></div>
+
+  <div class="settings">
+    <div>
+      <label class="field-label" for="scannerName">A neved</label>
+      <input type="text" id="scannerName" class="name-input" placeholder="pl. Hajas Tamás" autocomplete="name">
+    </div>
+    <div>
+      <span class="field-label">Eszköz típusa</span>
+      <div class="segmented" id="deviceTypeGroup" role="group" aria-label="Eszköz típusa">
+        <button type="button" data-type="Monitor" class="active" aria-pressed="true">Monitor</button>
+        <button type="button" data-type="Dokkoló" aria-pressed="false">Dokkoló</button>
+        <button type="button" data-type="Laptop" aria-pressed="false">Laptop</button>
+        <button type="button" data-type="Egyéb" aria-pressed="false">Egyéb</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="camera-card">
+    <div class="camera-wrap" id="cameraWrap">
+      <video id="video" playsinline muted></video>
+      <div class="camera-placeholder">A címkén lévő kód (Data Matrix vagy QR) beolvasásához menj <strong>közel, 10&ndash;15 cm&#8209;re</strong>. Élő beolvasás: &bdquo;Kamera indítása&rdquo;. Ha az nem indul el: &bdquo;Beolvasás fotóval&rdquo;.</div>
+      <div class="scan-frame" id="scanFrame">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+      </div>
+      <button type="button" class="torch-btn" id="torchBtn" title="Vaku" aria-label="Vaku be- vagy kikapcsolása" aria-pressed="false">&#9728;&#65039;</button>
+    </div>
+    <div class="camera-controls">
+      <button type="button" class="btn btn-primary" id="cameraToggle">Kamera indítása</button>
+      <button type="button" class="btn btn-secondary" id="photoBtn">Beolvasás fotóval</button>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="galleryInput" accept="image/*" style="display:none">
+      <div class="status-line" id="statusLine" role="status" aria-live="polite">&nbsp;</div>
+    </div>
+    <div class="photo-review" id="photoReview">
+      <p class="review-hint" id="reviewHint">Koppints a képen közvetlenül a kódra.</p>
+      <div class="review-imgwrap" id="reviewWrap">
+        <img id="reviewImg" alt="A készített fotó">
+        <span class="review-marker" id="reviewMarker"></span>
+      </div>
+      <button type="button" class="btn btn-secondary" id="reviewCancel">Bezárás</button>
+    </div>
+    <div class="ppid-panel" id="ppidPanel">
+      <p class="ppid-title">Ez PPID kód, nem service tag</p>
+      <div class="ppid-code" id="ppidValue"></div>
+      <p class="ppid-explain">A Dell monitorokon a vonalkód a PPID-t tartalmazza. A service tag csak nyomtatva van a címkén &mdash; írd be a <strong>&bdquo;Service Tag&rdquo;</strong> utáni 7 karaktert, vagy az <strong>&bdquo;Express SVC Code&rdquo;</strong> számot, abból kiszámolom.</p>
+      <input type="text" id="ppidInput" placeholder="2K7K204 vagy 5575581220" autocapitalize="characters" inputmode="text">
+      <p class="ppid-derived" id="ppidDerived"></p>
+      <div class="ppid-actions">
+        <button type="button" class="btn btn-primary" id="ppidSave">Rögzítés</button>
+        <button type="button" class="btn btn-secondary" id="ppidSkip">Csak PPID</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="manual">
+    <button type="button" class="manual-toggle" id="manualToggle"><span class="chevron">&#9656;</span> Sérült címke &ndash; kézi rögzítés</button>
+    <div class="manual-body" id="manualBody">
+      <input type="text" id="manualInput" placeholder="7 karakteres Service Tag vagy Express kód" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <button type="button" id="manualSave">Rögzítés</button>
+    </div>
+  </div>
+
+  <div class="master-card">
+    <button type="button" class="master-toggle" id="masterToggle">
+      <span class="chevron">&#9656;</span> Mesterlista ellenőrzés
+      <span class="master-summary" id="masterSummary">nincs betöltve</span>
+    </button>
+    <div class="master-body" id="masterBody">
+      <p class="section-intro">Tölts fel egy meglévő Excel (.xlsx) vagy CSV eszközlistát. Ha egy beolvasott service tag megtalálható benne, a rendszer a lista adott sorát megjelöli &bdquo;Ellenőrizve&rdquo;-ként a mai dátummal.</p>
+      <input type="file" id="masterFile" class="file-input" accept=".csv,.xlsx,.xls">
+      <div id="masterColumnPicker" style="display:none; flex-direction:column; gap:8px;">
+        <div>
+          <span class="field-label">Melyik oszlop tartalmazza a service tag&#8209;et / azonosítót?</span>
+          <select id="masterColumnSelect"></select>
+        </div>
+        <button type="button" class="btn btn-primary" id="masterConfirm">Mesterlista betöltése</button>
+      </div>
+      <div id="masterStats" style="display:none; flex-direction:column; gap:10px;">
+        <div class="progress-row">
+          <div class="progress-track"><div class="progress-fill" id="masterProgressFill"></div></div>
+          <span class="progress-text" id="masterProgressText">0 / 0</span>
+        </div>
+        <div class="master-actions">
+          <button type="button" class="btn btn-secondary" id="masterExport">Frissített lista (XLSX)</button>
+          <button type="button" class="btn btn-secondary" id="masterExportCsv">CSV</button>
+          <button type="button" class="btn btn-secondary" id="masterReset">Másik fájl</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="list-head">
+    <h2>Legutóbbi beolvasások</h2>
+    <span class="count" id="listCount">0 tétel</span>
+  </div>
+  <div class="scan-list" id="scanList">
+    <div class="empty-state">Még nincs rögzített service tag.</div>
+  </div>
+
+  <footer class="appfoot">
+    <span class="foot-note" id="todayCount" style="margin:0;">Ma: 0 db</span>
+    <div class="export-actions">
+      <button type="button" class="btn btn-primary" id="exportBtn">Exportálás Excelbe</button>
+      <button type="button" class="btn btn-secondary" id="exportCsvBtn">CSV</button>
+    </div>
+  </footer>
+  <p class="foot-note">
+    Data Matrix, QR és vonalkód olvasás &mdash; a feldolgozás a telefonodon történik.
+    <a href="#" id="galleryLink" style="color:var(--accent);">Meglévő kép beolvasása</a>
+  </p>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- state ----------
+  var scans = [];              // {id, serviceTag, deviceType, timestamp, scannedBy, source}
+  var sharedMode = false;
+  var readOnly = false;
+  var artifactCap = null;
+  var downloadsCap = null;
+  var deviceType = "Monitor";
+  var stream = null;
+  var track = null;
+  var torchOn = false;
+  var scanTimer = null;
+  var lastScanText = "";
+  var lastScanAt = 0;
+  var canvas = document.createElement("canvas");
+  var ctx = canvas.getContext("2d", { willReadFrequently: true });
+  var inIframe = (function(){ try{ return window.self !== window.top; }catch(e){ return true; } })();
+
+  // masterList: { tagColumn, headers: [...], rows: [ {...eredeti oszlopok..., __verified, __verifiedDate} ] }
+  var masterList = null;
+  var pendingMaster = null; // { headers, rows } waiting for column confirmation
+  var VERIFIED_COL = "Ellenőrizve";
+  var VERIFIED_DATE_COL = "Utolsó ellenőrzés dátuma";
+
+  var el = {
+    statusPill: document.getElementById("statusPill"),
+    runtimeWarning: document.getElementById("runtimeWarning"),
+    scannerName: document.getElementById("scannerName"),
+    deviceTypeGroup: document.getElementById("deviceTypeGroup"),
+    cameraWrap: document.getElementById("cameraWrap"),
+    video: document.getElementById("video"),
+    scanFrame: document.getElementById("scanFrame"),
+    torchBtn: document.getElementById("torchBtn"),
+    cameraToggle: document.getElementById("cameraToggle"),
+    photoBtn: document.getElementById("photoBtn"),
+    photoInput: document.getElementById("photoInput"),
+    galleryInput: document.getElementById("galleryInput"),
+    photoReview: document.getElementById("photoReview"),
+    reviewHint: document.getElementById("reviewHint"),
+    reviewWrap: document.getElementById("reviewWrap"),
+    reviewImg: document.getElementById("reviewImg"),
+    reviewMarker: document.getElementById("reviewMarker"),
+    reviewCancel: document.getElementById("reviewCancel"),
+    ppidPanel: document.getElementById("ppidPanel"),
+    ppidValue: document.getElementById("ppidValue"),
+    ppidInput: document.getElementById("ppidInput"),
+    ppidDerived: document.getElementById("ppidDerived"),
+    ppidSave: document.getElementById("ppidSave"),
+    ppidSkip: document.getElementById("ppidSkip"),
+    statusLine: document.getElementById("statusLine"),
+    manualToggle: document.getElementById("manualToggle"),
+    manualBody: document.getElementById("manualBody"),
+    manualInput: document.getElementById("manualInput"),
+    manualSave: document.getElementById("manualSave"),
+    scanList: document.getElementById("scanList"),
+    listCount: document.getElementById("listCount"),
+    todayCount: document.getElementById("todayCount"),
+    exportBtn: document.getElementById("exportBtn"),
+    exportCsvBtn: document.getElementById("exportCsvBtn"),
+    masterToggle: document.getElementById("masterToggle"),
+    masterBody: document.getElementById("masterBody"),
+    masterSummary: document.getElementById("masterSummary"),
+    masterFile: document.getElementById("masterFile"),
+    masterColumnPicker: document.getElementById("masterColumnPicker"),
+    masterColumnSelect: document.getElementById("masterColumnSelect"),
+    masterConfirm: document.getElementById("masterConfirm"),
+    masterStats: document.getElementById("masterStats"),
+    masterProgressFill: document.getElementById("masterProgressFill"),
+    masterProgressText: document.getElementById("masterProgressText"),
+    masterExport: document.getElementById("masterExport"),
+    masterExportCsv: document.getElementById("masterExportCsv"),
+    masterReset: document.getElementById("masterReset")
+  };
+
+  // ---------- utils ----------
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function nowIso(){ return new Date().toISOString(); }
+  function fmtTime(iso){
+    try{
+      var d = new Date(iso);
+      return d.toLocaleDateString("hu-HU") + " " + d.toLocaleTimeString("hu-HU", {hour:"2-digit", minute:"2-digit"});
+    }catch(e){ return iso; }
+  }
+  function isToday(iso){
+    try{
+      var d = new Date(iso), t = new Date();
+      return d.getFullYear()===t.getFullYear() && d.getMonth()===t.getMonth() && d.getDate()===t.getDate();
+    }catch(e){ return false; }
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function setStatus(msg, kind){
+    el.statusLine.textContent = msg || " ";
+    el.statusLine.className = "status-line" + (kind ? " " + kind : "");
+  }
+
+  function showRuntimeWarning(msg){
+    el.runtimeWarning.textContent = msg;
+    el.runtimeWarning.classList.add("show");
+  }
+
+  function getScannerName(){
+    var v = (el.scannerName.value || "").trim();
+    return v || "Ismeretlen";
+  }
+
+  // ---------- local persistence (name always local; scans local as fallback) ----------
+  function loadName(){
+    try{
+      var n = localStorage.getItem("cimkeolvaso_name");
+      if (n) el.scannerName.value = n;
+    }catch(e){}
+  }
+  function saveName(){
+    try{ localStorage.setItem("cimkeolvaso_name", el.scannerName.value || ""); }catch(e){}
+  }
+  function loadLocalScans(){
+    try{
+      var raw = localStorage.getItem("cimkeolvaso_scans");
+      var parsed = raw ? JSON.parse(raw) : [];
+      scans = Array.isArray(parsed) ? parsed.filter(function(s){
+        return s && typeof s.id === "string" && typeof s.serviceTag === "string";
+      }) : [];
+    }catch(e){ scans = []; }
+  }
+  function saveLocalScans(){
+    try{ localStorage.setItem("cimkeolvaso_scans", JSON.stringify(scans)); return true; }
+    catch(e){ return false; }
+  }
+  function loadLocalMaster(){
+    try{
+      var raw = localStorage.getItem("cimkeolvaso_master");
+      masterList = raw ? JSON.parse(raw) : null;
+    }catch(e){ masterList = null; }
+  }
+  function saveLocalMaster(){
+    try{ localStorage.setItem("cimkeolvaso_master", masterList ? JSON.stringify(masterList) : ""); return true; }
+    catch(e){ return false; }
+  }
+
+  // ---------- shared persistence via artifact capability ----------
+  function updateStatusPill(){
+    if (readOnly){
+      el.statusPill.className = "pill readonly";
+      el.statusPill.innerHTML = "<span class=\"dot\"></span>Csak olvasható";
+    } else if (sharedMode){
+      el.statusPill.className = "pill shared";
+      el.statusPill.innerHTML = "<span class=\"dot\"></span>Közös lista";
+    } else {
+      el.statusPill.className = "pill local";
+      el.statusPill.innerHTML = "<span class=\"dot\"></span>Csak ezen a gépen";
+    }
+  }
+
+  function fetchSharedScans(){
+    return fetch("data/scans.json", { cache: "no-store" })
+      .then(function(res){ return res.ok ? res.json() : []; })
+      .catch(function(){ return []; });
+  }
+
+  // Ha a közös (artifact) mentés nem elérhető, végleg helyi módra váltunk —
+  // a beolvasások így soha nem vesznek el, csak nem lesznek megoszthatók.
+  var sharedWriteBroken = false;
+
+  function fallBackToLocal(){
+    sharedWriteBroken = true;
+    sharedMode = false;
+    saveLocalScans();
+    saveLocalMaster();
+    updateStatusPill();
+    setStatus("A közös mentés itt nem elérhető — a beolvasások ezen a készüléken maradnak. A CSV exporttal tudod kimenteni őket.", "warn");
+  }
+
+  function persist(){
+    saveLocalScans(); // mindig van helyi biztonsági mentés
+    if (sharedMode && !readOnly && !sharedWriteBroken && artifactCap){
+      return artifactCap.publish({ "data/scans.json": JSON.stringify(scans) })
+        .catch(function(err){
+          var code = err && err.code;
+          if (code === "conflict"){
+            return fetchSharedScans().then(function(latest){
+              var map = {};
+              latest.forEach(function(s){ map[s.id] = s; });
+              scans.forEach(function(s){ map[s.id] = s; });
+              scans = Object.keys(map).map(function(k){ return map[k]; })
+                .sort(function(a,b){ return (b.timestamp||"").localeCompare(a.timestamp||""); });
+              renderList();
+              saveLocalScans();
+              return artifactCap.publish({ "data/scans.json": JSON.stringify(scans) }).catch(function(){});
+            });
+          }
+          if (code === "not_writer" || code === "not_granted"){
+            readOnly = true;
+            updateStatusPill();
+            setStatus("Ez a nézet csak olvasható, a beolvasás nem menthető a közös listába.", "warn");
+            return;
+          }
+          if (code === "rate_limited"){
+            setStatus("Gyors egymásutánban sok mentés — a beolvasás rögzítve, a közös mentés kicsit késik.", "warn");
+            return;
+          }
+          fallBackToLocal();
+        });
+    }
+    return Promise.resolve();
+  }
+
+  function fetchSharedMaster(){
+    return fetch("data/masterlist.json", { cache: "no-store" })
+      .then(function(res){ return res.ok ? res.json() : null; })
+      .catch(function(){ return null; });
+  }
+
+  function persistMaster(){
+    saveLocalMaster(); // mindig van helyi biztonsági mentés
+    if (sharedMode && !readOnly && !sharedWriteBroken && artifactCap){
+      return artifactCap.publish({ "data/masterlist.json": JSON.stringify(masterList) })
+        .catch(function(err){
+          var code = err && err.code;
+          if (code === "conflict"){
+            return fetchSharedMaster().then(function(latest){
+              masterList = mergeMasterLists(latest, masterList);
+              renderMaster();
+              saveLocalMaster();
+              return artifactCap.publish({ "data/masterlist.json": JSON.stringify(masterList) }).catch(function(){});
+            });
+          }
+          if (code === "not_writer" || code === "not_granted"){
+            readOnly = true;
+            updateStatusPill();
+            return;
+          }
+          if (code === "rate_limited") return;
+          fallBackToLocal();
+        });
+    }
+    return Promise.resolve();
+  }
+
+  // két verzió összefésülése ütközéskor: azonosító szerint párosít, a "megtalálva" jelölést
+  // és a legfrissebb ellenőrzési dátumot mindkét oldalról megtartja
+  function mergeMasterLists(a, b){
+    if (!a) return b;
+    if (!b) return a;
+    var tagCol = b.tagColumn || a.tagColumn;
+    var byTag = {};
+    a.rows.forEach(function(r){ byTag[String(r[tagCol]||"").trim().toLowerCase()] = r; });
+    b.rows.forEach(function(r){
+      var key = String(r[tagCol]||"").trim().toLowerCase();
+      var existing = byTag[key];
+      if (!existing){ byTag[key] = r; return; }
+      var merged = Object.assign({}, existing, r);
+      merged.__verified = (existing.__verified === "Igen" || r.__verified === "Igen") ? "Igen" : "Nem";
+      merged.__verifiedDate = [existing.__verifiedDate, r.__verifiedDate].filter(Boolean).sort().slice(-1)[0] || "";
+      byTag[key] = merged;
+    });
+    return {
+      tagColumn: tagCol,
+      typeColumn: b.typeColumn || a.typeColumn || null,
+      headers: b.headers || a.headers,
+      rows: Object.keys(byTag).map(function(k){ return byTag[k]; })
+    };
+  }
+
+  function checkMasterList(tag){
+    if (!masterList || !masterList.rows || !masterList.rows.length) return null;
+    var norm = tag.trim().toLowerCase();
+    var row = masterList.rows.find(function(r){
+      return String(r[masterList.tagColumn] || "").trim().toLowerCase() === norm;
+    });
+    if (!row) return { found: false };
+    var alreadyVerified = row.__verified === "Igen";
+    row.__verified = "Igen";
+    row.__verifiedDate = nowIso();
+    persistMaster();
+    renderMaster();
+    var typeFromList = null;
+    if (masterList.typeColumn && row[masterList.typeColumn]){
+      typeFromList = String(row[masterList.typeColumn]).trim() || null;
+    }
+    return { found: true, alreadyVerified: alreadyVerified, row: row, deviceType: typeFromList };
+  }
+
+  function renderMaster(){
+    if (!masterList || !masterList.rows || !masterList.rows.length){
+      el.masterSummary.textContent = "nincs betöltve";
+      el.masterColumnPicker.style.display = "none";
+      el.masterStats.style.display = "none";
+      return;
+    }
+    var total = masterList.rows.length;
+    var verified = masterList.rows.filter(function(r){ return r.__verified === "Igen"; }).length;
+    el.masterSummary.textContent = verified + " / " + total + " ellenőrizve";
+    el.masterColumnPicker.style.display = "none";
+    el.masterStats.style.display = "flex";
+    var pct = total ? Math.round((verified / total) * 100) : 0;
+    el.masterProgressFill.style.width = pct + "%";
+    el.masterProgressText.textContent = verified + " / " + total;
+  }
+
+  // ---------- rendering ----------
+  function renderList(){
+    var sorted = scans.slice().sort(function(a,b){ return (b.timestamp||"").localeCompare(a.timestamp||""); });
+    el.listCount.textContent = sorted.length + (sorted.length === 1 ? " tétel" : " tétel");
+    if (!sorted.length){
+      el.scanList.innerHTML = "<div class=\"empty-state\">Még nincs rögzített service tag.</div>";
+    } else {
+      el.scanList.innerHTML = sorted.slice(0, 25).map(function(s){
+        var matchBadge = "";
+        if (s.masterMatch === true) matchBadge = "<span class=\"badge match-yes\">&#10003; lista</span>";
+        else if (s.masterMatch === false) matchBadge = "<span class=\"badge match-no\">&#10007; lista</span>";
+        var kindBadge = (s.codeKind === "PPID") ? "<span class=\"badge match-no\">PPID</span>" : "";
+        return (
+          "<div class=\"scan-row\" data-id=\"" + escapeHtml(s.id) + "\">" +
+            "<div class=\"grow\">" +
+              "<div class=\"tag-val\">" + escapeHtml(s.serviceTag) + "</div>" +
+              "<div class=\"meta\">" + escapeHtml(s.deviceType) + " &middot; " + escapeHtml(fmtTime(s.timestamp)) + " &middot; " + escapeHtml(s.scannedBy)
+                + (s.ppid && s.ppid !== s.serviceTag ? "<br>PPID: " + escapeHtml(s.ppid) : "") + "</div>" +
+            "</div>" +
+            kindBadge +
+            matchBadge +
+            "<span class=\"badge" + (s.source === "Kézi" ? " manual" : "") + "\">" + escapeHtml(s.source) + "</span>" +
+            "<button type=\"button\" class=\"del\" data-id=\"" + escapeHtml(s.id) + "\" title=\"Törlés\">&#128465;</button>" +
+          "</div>"
+        );
+      }).join("");
+    }
+    var todayN = scans.filter(function(s){ return isToday(s.timestamp); }).length;
+    el.todayCount.textContent = "Ma: " + todayN + " db";
+  }
+
+  // ---------- Dell Express Service Code <-> Service Tag (base36 / base10) ----------
+  var B36 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+  function expressToServiceTag(code){
+    var digits = String(code || "").replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 13) return null;
+    var n = parseInt(digits, 10);
+    if (!isFinite(n) || n <= 0 || n >= Math.pow(36, 7)) return null;
+    var out = "";
+    while (n > 0){ out = B36.charAt(n % 36) + out; n = Math.floor(n / 36); }
+    while (out.length < 7) out = "0" + out;
+    return /^[0-9A-Z]{7}$/.test(out) ? out : null;
+  }
+
+  function serviceTagToExpress(tag){
+    var t = String(tag || "").toUpperCase();
+    if (!/^[0-9A-Z]{7}$/.test(t) || /^\d{7}$/.test(t)) return null;
+    var n = 0;
+    for (var i = 0; i < t.length; i++){
+      var v = B36.indexOf(t.charAt(i));
+      if (v < 0) return null;
+      n = n * 36 + v;
+      if (n > Number.MAX_SAFE_INTEGER) return null;
+    }
+    return String(n);
+  }
+
+  // ---------- adding scans ----------
+  function addScan(tag, source, opts){
+    opts = opts || {};
+    var trimmed = (tag || "").trim().toUpperCase();
+    if (!trimmed) return;
+    var kind = opts.kind || codeKind(trimmed);
+    if (kind !== "PPID" && (!/^[0-9A-Z]{7}$/.test(trimmed) || /^\d{7}$/.test(trimmed))){
+      setStatus("A talált adat nem érvényes 7 karakteres Dell Service Tag: " + trimmed, "warn");
+      flashFrame(false);
+      return;
+    }
+    if (kind === "PPID" && codeKind(trimmed) !== "PPID"){
+      setStatus("A talált PPID formátuma nem érvényes.", "warn");
+      return;
+    }
+    var existing = scans.find(function(s){ return s.serviceTag.toLowerCase() === trimmed.toLowerCase(); });
+    if (existing){
+      setStatus("Már szerepel a listában: " + trimmed + " (" + fmtTime(existing.timestamp) + ")", "warn");
+      flashFrame(false);
+      return;
+    }
+    var matchResult = checkMasterList(trimmed);
+    var record = {
+      id: uid(),
+      serviceTag: trimmed,
+      ppid: opts.ppid || "",
+      deviceType: (matchResult && matchResult.deviceType) || deviceType,
+      timestamp: nowIso(),
+      scannedBy: getScannerName(),
+      source: source,
+      codeKind: kind,
+      note: opts.note || "",
+      masterMatch: matchResult ? matchResult.found : null,
+      masterWasAlreadyVerified: matchResult && matchResult.found ? matchResult.alreadyVerified : null
+    };
+    scans.unshift(record);
+    renderList();
+    persist();
+    if (kind === "PPID"){
+      setStatus("Rögzítve, de ez PPID kód, nem service tag: " + trimmed
+        + " — a címkén keresd az „ST” vagy „S/N” feliratú, rövidebb kódot.", "warn");
+    } else if (matchResult && matchResult.found){
+      setStatus("✓ Megtalálva a mesterlistában — rögzítve: " + trimmed
+        + (matchResult.deviceType ? " (" + matchResult.deviceType + ")" : ""), "success");
+    } else if (matchResult && !matchResult.found){
+      setStatus("Rögzítve, de NEM szerepel a mesterlistában: " + trimmed, "warn");
+    } else {
+      setStatus("Rögzítve: " + trimmed, "success");
+    }
+    flashFrame(true);
+    if (navigator.vibrate){ try{ navigator.vibrate(source === "QR" ? 60 : 30); }catch(e){} }
+  }
+
+  function flashFrame(ok){
+    el.scanFrame.classList.toggle("flash", !!ok);
+    setTimeout(function(){ el.scanFrame.classList.remove("flash"); }, 500);
+  }
+
+  function removeScan(id){
+    var removed = scans.find(function(s){ return s.id === id; });
+    scans = scans.filter(function(s){ return s.id !== id; });
+    if (removed && removed.masterMatch === true && removed.masterWasAlreadyVerified === false && masterList){
+      var stillPresent = scans.some(function(s){
+        return String(s.serviceTag || "").toUpperCase() === String(removed.serviceTag || "").toUpperCase();
+      });
+      if (!stillPresent){
+        var row = masterList.rows.find(function(r){
+          return String(r[masterList.tagColumn] || "").trim().toUpperCase() === String(removed.serviceTag || "").toUpperCase();
+        });
+        if (row){ row.__verified = "Nem"; row.__verifiedDate = ""; persistMaster(); renderMaster(); }
+      }
+    }
+    renderList();
+    persist();
+  }
+
+  // ---------- device type segmented control ----------
+  el.deviceTypeGroup.addEventListener("click", function(e){
+    var btn = e.target.closest("button[data-type]");
+    if (!btn) return;
+    deviceType = btn.getAttribute("data-type");
+    Array.prototype.forEach.call(el.deviceTypeGroup.querySelectorAll("button"), function(b){
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+    });
+  });
+
+  el.scannerName.addEventListener("change", saveName);
+  el.scannerName.addEventListener("blur", saveName);
+
+  // ---------- manual entry ----------
+  el.manualToggle.addEventListener("click", function(){
+    var open = el.manualBody.classList.toggle("open");
+    el.manualToggle.classList.toggle("open", open);
+    if (open) el.manualInput.focus();
+  });
+  el.manualSave.addEventListener("click", function(){
+    var r = resolvePpidInput(el.manualInput.value);
+    if (!r){
+      setStatus("Adj meg egy 7 karakteres Service Tag-et vagy egy 8–13 jegyű Express SVC Code-ot.", "warn");
+      return;
+    }
+    addScan(r.tag, "Kézi", { kind: "Service tag", note: r.from === "Express kód" ? "Express kódból" : "" });
+    el.manualInput.value = "";
+  });
+  el.manualInput.addEventListener("keydown", function(e){
+    if (e.key === "Enter") el.manualSave.click();
+  });
+
+  // Egységes fájlletöltés: az artifact nézetben a downloads képesség,
+  // önálló oldalon szabványos Blob-link.
+  function saveFile(filename, data, mime){
+    if (downloadsCap){
+      downloadsCap.save({ filename: filename, data: data }).catch(function(err){
+        if (!err || err.code !== "declined") setStatus("A letöltés nem sikerült.", "error");
+      });
+      return;
+    }
+    try{
+      var blob = data instanceof Blob ? data : new Blob([data], { type: mime || "application/octet-stream" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+      setStatus("Letöltés elindítva: " + filename, "success");
+    }catch(e){
+      setStatus("Exportálás ebben a nézetben nem érhető el.", "warn");
+    }
+  }
+
+  function saveCsv(filename, csv){ saveFile(filename, csv, "text/csv;charset=utf-8"); }
+
+  function saveWorkbook(filename, workbook){
+    if (typeof XLSX === "undefined"){
+      setStatus("Az Excel-komponens nem töltődött be. Használd a CSV exportot, vagy ellenőrizd az internetkapcsolatot.", "error");
+      return;
+    }
+    try{
+      var bytes = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      saveFile(filename, new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    }catch(e){
+      setStatus("Az Excel-fájl elkészítése nem sikerült. A CSV export továbbra is használható.", "error");
+    }
+  }
+
+  // ---------- master list (mesterlista) ----------
+  el.masterToggle.addEventListener("click", function(){
+    var open = el.masterBody.classList.toggle("open");
+    el.masterToggle.classList.toggle("open", open);
+  });
+
+  function guessTagColumn(headers){
+    var patterns = [/service.?tag/i, /címke/i, /cimke/i, /serial/i, /sorozatsz/i, /azonos/i, /^tag$/i];
+    for (var p = 0; p < patterns.length; p++){
+      for (var i = 0; i < headers.length; i++){
+        if (patterns[p].test(String(headers[i]))) return headers[i];
+      }
+    }
+    return headers[0] || "";
+  }
+
+  el.masterFile.addEventListener("change", function(e){
+    var file = e.target.files[0];
+    if (!file) return;
+    var isBinary = /\.xlsx?$/i.test(file.name);
+    if (typeof XLSX === "undefined"){
+      setStatus("Az Excel/CSV beolvasó komponens nem töltődött be. Ellenőrizd az internetkapcsolatot, majd töltsd újra az oldalt.", "error");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      try{
+        var wb = isBinary
+          ? XLSX.read(new Uint8Array(ev.target.result), { type: "array" })
+          : XLSX.read(ev.target.result, { type: "string" });
+        var sheet = wb.Sheets[wb.SheetNames[0]];
+        var headerRow = (XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })[0] || []).map(String);
+        var rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        if (!headerRow.length || !rows.length){
+          setStatus("A fájl üresnek tűnik, vagy nem sikerült beolvasni.", "error");
+          return;
+        }
+        pendingMaster = { headers: headerRow, rows: rows };
+        el.masterColumnSelect.innerHTML = headerRow.map(function(h){
+          return "<option value=\"" + escapeHtml(h) + "\">" + escapeHtml(h) + "</option>";
+        }).join("");
+        el.masterColumnSelect.value = guessTagColumn(headerRow);
+        el.masterColumnPicker.style.display = "flex";
+        el.masterStats.style.display = "none";
+        el.masterSummary.textContent = rows.length + " sor beolvasva";
+        if (!el.masterBody.classList.contains("open")){
+          el.masterBody.classList.add("open");
+          el.masterToggle.classList.add("open");
+        }
+      }catch(err){
+        setStatus("Nem sikerült beolvasni a fájlt. Ellenőrizd, hogy .csv vagy .xlsx formátumú-e.", "error");
+      }
+    };
+    if (isBinary) reader.readAsArrayBuffer(file); else reader.readAsText(file, "UTF-8");
+  });
+
+  el.masterConfirm.addEventListener("click", function(){
+    if (!pendingMaster) return;
+    var col = el.masterColumnSelect.value;
+    var rows = pendingMaster.rows.map(function(r){
+      var copy = Object.assign({}, r);
+      copy.__verified = r[VERIFIED_COL] === "Igen" ? "Igen" : "Nem";
+      copy.__verifiedDate = r[VERIFIED_DATE_COL] || "";
+      return copy;
+    });
+    var typeCol = null;
+    for (var t = 0; t < pendingMaster.headers.length; t++){
+      var hh = String(pendingMaster.headers[t]);
+      if (hh !== col && /t[íi]pus|type|eszk[öo]z|kateg[óo]ri/i.test(hh)){ typeCol = hh; break; }
+    }
+    masterList = { tagColumn: col, typeColumn: typeCol, headers: pendingMaster.headers, rows: rows };
+    pendingMaster = null;
+    persistMaster();
+    renderMaster();
+    setStatus("Mesterlista betöltve: " + rows.length + " sor.", "success");
+  });
+
+  el.masterReset.addEventListener("click", function(){
+    masterList = null;
+    persistMaster();
+    renderMaster();
+    el.masterFile.value = "";
+    setStatus("Mesterlista törölve. Tölts fel egy új fájlt.", "warn");
+  });
+
+  function masterRowsForExport(){
+    if (!masterList || !masterList.rows.length) return null;
+    var headers = masterList.headers.slice();
+    if (headers.indexOf(VERIFIED_COL) === -1) headers.push(VERIFIED_COL);
+    if (headers.indexOf(VERIFIED_DATE_COL) === -1) headers.push(VERIFIED_DATE_COL);
+    var rows = masterList.rows.map(function(r){
+      var out = {};
+      headers.forEach(function(h){
+        if (h === VERIFIED_COL) out[h] = r.__verified || "Nem";
+        else if (h === VERIFIED_DATE_COL) out[h] = r.__verifiedDate ? fmtTime(r.__verifiedDate) : "";
+        else out[h] = r[h] == null ? "" : r[h];
+      });
+      return out;
+    });
+    return { headers: headers, rows: rows };
+  }
+
+  el.masterExport.addEventListener("click", function(){
+    var data = masterRowsForExport();
+    if (!data) return;
+    if (typeof XLSX === "undefined"){
+      setStatus("Az Excel-komponens nem érhető el; használd a CSV gombot.", "error");
+      return;
+    }
+    var wb = XLSX.utils.book_new();
+    var ws = XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
+    XLSX.utils.book_append_sheet(wb, ws, "Mesterlista");
+    saveWorkbook("mesterlista_frissitve.xlsx", wb);
+  });
+
+  el.masterExportCsv.addEventListener("click", function(){
+    var data = masterRowsForExport();
+    if (!data) return;
+    var lines = [data.headers.map(csvEscape).join(";")];
+    data.rows.forEach(function(r){
+      var line = data.headers.map(function(h){
+        return csvEscape(r[h]);
+      });
+      lines.push(line.join(";"));
+    });
+    var csv = "﻿" + lines.join("\n") + "\n";
+    saveCsv("mesterlista_frissitve.csv", csv);
+  });
+
+  // ---------- list delete ----------
+  el.scanList.addEventListener("click", function(e){
+    var btn = e.target.closest("button.del");
+    if (!btn) return;
+    removeScan(btn.getAttribute("data-id"));
+  });
+
+  // ---------- camera / scanning ----------
+  function startCamera(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus("A böngésződ nem támogatja a kamerás beolvasást. Használd a kézi rögzítést.", "error");
+      return;
+    }
+    setStatus("Kamera indítása…");
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
+      .then(function(s){
+        stream = s;
+        track = s.getVideoTracks()[0];
+        el.video.srcObject = s;
+        el.video.play();
+        el.cameraWrap.classList.add("active");
+        el.cameraToggle.textContent = "Kamera leállítása";
+        setStatus("Tartsd a telefont közel (10–15 cm) a kódhoz.");
+        setupTorch();
+        scanTimer = setInterval(scanFrame, 250);
+      })
+      .catch(function(err){
+        var name = err && err.name;
+        var msg = "Nem sikerült elindítani a kamerát. Használd a „Beolvasás fotóval” gombot.";
+        if (name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError"){
+          msg = inIframe
+            ? "Ebben a beágyazott nézetben a böngésző nem engedi az élő kamerát. Használd a „Beolvasás fotóval” gombot — az a telefon kameraalkalmazását nyitja meg."
+            : "A kamera használata nincs engedélyezve ezen az oldalon. Használd a „Beolvasás fotóval” gombot, vagy engedélyezd a kamerát a böngésző webhely-beállításaiban.";
+        } else if (name === "NotFoundError" || name === "OverconstrainedError"){
+          msg = "Nem találtam hátsó kamerát. Használd a „Beolvasás fotóval” gombot.";
+        } else if (name === "NotReadableError"){
+          msg = "A kamerát egy másik alkalmazás használja. Zárd be, vagy használd a „Beolvasás fotóval” gombot.";
+        }
+        setStatus(msg, "error");
+      });
+  }
+
+  // ================= dekódoló motor =================
+  // A Dell/HP eszközcímkék jellemzően Data Matrix kódot használnak, nem QR-t.
+  // Két olvasó, ebben a sorrendben: natív BarcodeDetector → ZXing.
+
+  var nativeDetector = null;
+  var nativeReady = null;
+
+  function initNativeDetector(){
+    if (nativeReady) return nativeReady;
+    if (typeof window.BarcodeDetector === "undefined"){
+      nativeReady = Promise.resolve(null);
+      return nativeReady;
+    }
+    nativeReady = window.BarcodeDetector.getSupportedFormats().then(function(sup){
+      var want = ["data_matrix", "qr_code", "code_128", "code_39", "aztec", "pdf417"].filter(function(f){
+        return sup.indexOf(f) !== -1;
+      });
+      if (!want.length) return null;
+      nativeDetector = new window.BarcodeDetector({ formats: want });
+      return nativeDetector;
+    }).catch(function(){ return null; });
+    return nativeReady;
+  }
+
+  var zxReader = null;
+  function getZxReader(){
+    if (zxReader) return zxReader;
+    if (typeof ZXing === "undefined" || !ZXing.MultiFormatReader) return null;
+    var fmts = [];
+    ["DATA_MATRIX", "QR_CODE", "CODE_128", "CODE_39", "AZTEC", "PDF_417"].forEach(function(k){
+      if (ZXing.BarcodeFormat && ZXing.BarcodeFormat[k] !== undefined) fmts.push(ZXing.BarcodeFormat[k]);
+    });
+    var hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, fmts);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    zxReader = new ZXing.MultiFormatReader();
+    zxReader.setHints(hints);
+    return zxReader;
+  }
+
+  // A ZXing RGBLuminanceSource már szürkeárnyalatos puffert vár (w*h), nem nyers RGBA-t.
+  // Mindkét polaritást megpróbáljuk: a Dell címkék Data Matrix kódja sötét-a-világoson,
+  // a "MyDell" QR viszont világos-a-sötéten, azaz csak invertálva olvasható.
+  function zxDecodeAll(imgData){
+    var reader = getZxReader();
+    if (!reader) return [];
+    var d = imgData.data;
+    var n = imgData.width * imgData.height;
+    var gray = new Uint8ClampedArray(n);
+    for (var i = 0, j = 0; i < n; i++, j += 4){
+      gray[i] = (d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114) | 0;
+    }
+    var out = [];
+    var base;
+    try{ base = new ZXing.RGBLuminanceSource(gray, imgData.width, imgData.height); }
+    catch(e){ return out; }
+
+    var sources = [base];
+    try{ sources.push(base.invert()); }catch(e){}
+
+    for (var k = 0; k < sources.length; k++){
+      try{
+        var res = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(sources[k])));
+        if (res && res.getText) out.push(res.getText());
+      }catch(e2){}
+      try{ reader.reset(); }catch(e3){}
+    }
+    return out;
+  }
+
+  function grab(source, sx, sy, sw, sh, targetW){
+    if (sw < 8 || sh < 8) return null;
+    var scale = targetW ? Math.min(1, targetW / sw) : 1;
+    var w = Math.max(1, Math.round(sw * scale));
+    var h = Math.max(1, Math.round(sh * scale));
+    if (w < 480){ var f = 480 / w; w = Math.round(w * f); h = Math.round(h * f); }
+    canvas.width = w; canvas.height = h;
+    ctx.imageSmoothingEnabled = true;
+    try{
+      ctx.drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
+      return ctx.getImageData(0, 0, w, h);
+    }catch(e){ return null; }
+  }
+
+  // Egy régió dekódolása, a megtalált kódok közül a legjobbat adja vissza (értelmezett formában).
+  function decodeRegion(source, sx, sy, sw, sh, targetW){
+    var data = grab(source, sx, sy, sw, sh, targetW);
+    if (!data) return null;
+    var texts = zxDecodeAll(data);
+    var best = null;
+    for (var i = 0; i < texts.length; i++){ best = betterOf(best, parseCode(texts[i])); }
+    return best;
+  }
+
+  // A Dell Data Matrix kisbetűvel kódolja a service tag-et — a nyomtatott szöveg nagybetűs.
+  function normalizeCode(text){
+    var t = String(text || "").trim();
+    if (/^[a-z0-9]{4,14}$/.test(t)) return t.toUpperCase();
+    return t;
+  }
+
+  // Dell monitorokon a Data Matrix gyakran a PPID-t kódolja (pl. CN0CYJR4QDC0052H0RHBA03),
+  // ami nem azonos a 7 karakteres service tag-gel. Ezt jelezni kell, hogy ne keveredjenek.
+  function codeKind(text){
+    var t = String(text || "").trim();
+    if (/^[A-Z]{2}[0-9A-Z]{16,}$/i.test(t) && t.length >= 18) return "PPID";
+    if (/^[A-Z0-9]{7}$/i.test(t)) return "Service tag";
+    return "Kód";
+  }
+
+  // A "MyDell" QR-kód a támogatási URL-ben tartalmazza a service tag-et:
+  // https://www.dell.com/support/pid?s=q3&t=4JVW304  ->  4JVW304
+  function tagFromUrl(text){
+    var t = String(text || "").trim();
+    if (!/^https?:\/\//i.test(t)) return null;
+    var names = ["t", "servicetag", "st", "tag"];
+    for (var i = 0; i < names.length; i++){
+      var m = t.match(new RegExp("[?&]" + names[i] + "=([0-9A-Za-z]{5,10})(?:[&#]|$)"));
+      if (m && /^[0-9A-Za-z]{5,10}$/.test(m[1])) return m[1].toUpperCase();
+    }
+    return null;
+  }
+
+  // Egy beolvasott kód értelmezése. A rank dönt, ha egy képen több kód is van:
+  // 3 = használható service tag, 2 = Express kód, 1 = PPID, 0 = egyéb.
+  function parseCode(text){
+    var raw = String(text || "").trim();
+    if (!raw) return null;
+
+    var fromUrl = tagFromUrl(raw);
+    if (fromUrl) return { raw: raw, tag: fromUrl, kind: "Service tag", rank: 3, note: "QR-kód URL-jéből" };
+
+    var up = raw.toUpperCase();
+    if (/^[0-9A-Z]{7}$/.test(up) && !/^\d{7}$/.test(up)){
+      return { raw: raw, tag: up, kind: "Service tag", rank: 3, note: null };
+    }
+    if (/^\d{8,13}$/.test(up)){
+      var t = expressToServiceTag(up);
+      if (t) return { raw: raw, tag: t, kind: "Service tag", rank: 2, note: "Express kódból" };
+    }
+    if (codeKind(up) === "PPID"){
+      return { raw: raw, tag: up, kind: "PPID", rank: 1, note: null };
+    }
+    return { raw: raw, tag: normalizeCode(raw), kind: "Kód", rank: 0, note: null };
+  }
+
+  function betterOf(a, b){
+    if (!a) return b;
+    if (!b) return a;
+    return (b.rank > a.rank) ? b : a;
+  }
+
+  // Jelöltek végigpróbálása a felület blokkolása nélkül. Ha egy címkén több kód van
+  // (pl. Data Matrix = PPID és MyDell QR = service tag), a jobbat választjuk:
+  // service tag találatnál azonnal megállunk, PPID-nél még keresünk egy darabig.
+  function runCandidates(cands, onProgress){
+    var i = 0;
+    var best = null;
+    var grace = -1;
+    return new Promise(function(resolve){
+      function step(){
+        if (i >= cands.length || grace === 0) return resolve(best);
+        var c = cands[i++];
+        if (onProgress) onProgress(i, cands.length);
+        var hit = decodeRegion(c.src, c.sx, c.sy, c.sw, c.sh, c.t);
+        if (hit){
+          best = betterOf(best, hit);
+          if (best && best.rank >= 3) return resolve(best);
+          if (grace < 0) grace = 10; // találtunk valamit, de keresünk jobbat is
+        }
+        if (grace > 0) grace--;
+        setTimeout(step, 0);
+      }
+      step();
+    });
+  }
+
+  function wholeImageCandidates(img){
+    var W = img.naturalWidth, H = img.naturalHeight;
+    var out = [];
+    [[1, 1600], [1, 1000], [0.6, 1500], [0.35, 1300], [0.2, 900]].forEach(function(a){
+      var sw = W * a[0], sh = H * a[0];
+      out.push({ src: img, sx: (W - sw) / 2, sy: (H - sh) / 2, sw: sw, sh: sh, t: a[1] });
+    });
+    // A címke nem mindig a kép közepén van: négy eltolt régiót is ellenőrzünk.
+    [[0.28,0.28],[0.72,0.28],[0.28,0.72],[0.72,0.72]].forEach(function(p){
+      var sw = W * 0.48, sh = H * 0.48;
+      out.push({
+        src: img,
+        sx: Math.max(0, Math.min(W - sw, W * p[0] - sw / 2)),
+        sy: Math.max(0, Math.min(H - sh, H * p[1] - sh / 2)),
+        sw: sw, sh: sh, t: 1200
+      });
+    });
+    return out;
+  }
+
+  function pointCandidates(img, px, py){
+    var W = img.naturalWidth, H = img.naturalHeight;
+    var wins = [W * 0.10, W * 0.17, W * 0.26, W * 0.40];
+    var offs = [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+    var out = [];
+    wins.forEach(function(win){
+      win = Math.max(140, Math.round(win));
+      var d = Math.round(win * 0.25);
+      offs.forEach(function(o){
+        var cx = px + o[0] * d, cy = py + o[1] * d;
+        var sx = Math.max(0, cx - win / 2), sy = Math.max(0, cy - win / 2);
+        var ex = Math.min(W, cx + win / 2), ey = Math.min(H, cy + win / 2);
+        if (ex - sx < 80 || ey - sy < 80) return;
+        out.push({ src: img, sx: sx, sy: sy, sw: ex - sx, sh: ey - sy, t: 900 });
+      });
+    });
+    return out;
+  }
+
+  // A natív detektor egyszerre MINDEN kódot visszaad a képen — közülük a legjobbat választjuk.
+  function nativeDetect(source){
+    return initNativeDetector().then(function(det){
+      if (!det) return null;
+      return det.detect(source).then(function(codes){
+        if (!codes || !codes.length) return null;
+        var best = null;
+        for (var i = 0; i < codes.length; i++){
+          if (codes[i].rawValue) best = betterOf(best, parseCode(codes[i].rawValue));
+        }
+        return best;
+      }).catch(function(){ return null; });
+    }).catch(function(){ return null; });
+  }
+
+  // ---------- fotós mód ----------
+  var reviewImgEl = null;
+
+  function loadImageFromFile(file){
+    return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function(){ resolve({ img: img, url: url }); };
+      img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error("load failed")); };
+      img.src = url;
+    });
+  }
+
+  function closeReview(){
+    el.photoReview.classList.remove("open");
+    el.reviewMarker.classList.remove("show");
+    if (reviewImgEl && reviewImgEl.url){ URL.revokeObjectURL(reviewImgEl.url); }
+    reviewImgEl = null;
+  }
+
+  function openReview(loaded){
+    reviewImgEl = loaded;
+    el.reviewImg.src = loaded.url;
+    el.reviewHint.textContent = "Nem sikerült automatikusan — koppints a képen közvetlenül a kódra.";
+    el.reviewMarker.classList.remove("show");
+    el.photoReview.classList.add("open");
+  }
+
+  var pendingPpid = null;
+
+  function openPpidPanel(ppid){
+    pendingPpid = ppid;
+    el.ppidValue.textContent = ppid;
+    el.ppidInput.value = "";
+    el.ppidDerived.textContent = "";
+    el.ppidPanel.classList.add("open");
+    setStatus("Ez PPID kód — írd be a service tag-et vagy az Express kódot.", "warn");
+    try{ el.ppidInput.focus(); }catch(e){}
+  }
+
+  function closePpidPanel(){
+    pendingPpid = null;
+    el.ppidPanel.classList.remove("open");
+  }
+
+  function acceptParsed(parsed){
+    if (!parsed) return;
+    if (parsed.rank === 0){
+      setStatus("A kód olvasható, de nem azonosítható Dell Service Tagként: " + parsed.tag, "warn");
+      flashFrame(false);
+      return;
+    }
+    lastScanText = parsed.raw;
+    lastScanAt = Date.now();
+    closeReview();
+    if (parsed.kind === "PPID"){
+      openPpidPanel(parsed.tag);
+      return;
+    }
+    addScan(parsed.tag, "Kód", { kind: parsed.kind, note: parsed.note });
+  }
+
+  // Az input elfogadja a 7 karakteres Service Tag-et és a 8–13 jegyű Express kódot is.
+  function resolvePpidInput(raw){
+    var v = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (!v) return null;
+    if (/^\d{8,13}$/.test(v)){
+      var t = expressToServiceTag(v);
+      return t ? { tag: t, from: "Express kód" } : null;
+    }
+    if (/^[0-9A-Z]{7}$/.test(v) && !/^\d{7}$/.test(v)) return { tag: v, from: "service tag" };
+    return null;
+  }
+
+  el.ppidInput.addEventListener("input", function(){
+    var r = resolvePpidInput(el.ppidInput.value);
+    if (!r){ el.ppidDerived.textContent = ""; return; }
+    if (r.from === "Express kód"){
+      el.ppidDerived.textContent = "Express kódból: " + r.tag;
+    } else {
+      var ex = serviceTagToExpress(r.tag);
+      el.ppidDerived.textContent = ex ? "Express kód: " + ex : "";
+    }
+  });
+
+  el.ppidSave.addEventListener("click", function(){
+    var r = resolvePpidInput(el.ppidInput.value);
+    if (!r){
+      setStatus("Add meg a 7 karakteres service tag-et, vagy az Express SVC Code számot.", "warn");
+      return;
+    }
+    var ppid = pendingPpid;
+    closePpidPanel();
+    addScan(r.tag, "Kód", { ppid: ppid, kind: "Service tag" });
+  });
+
+  el.ppidSkip.addEventListener("click", function(){
+    var ppid = pendingPpid;
+    closePpidPanel();
+    addScan(ppid, "Kód", { ppid: ppid, kind: "PPID" });
+  });
+
+  el.ppidInput.addEventListener("keydown", function(e){
+    if (e.key === "Enter") el.ppidSave.click();
+  });
+
+  function handlePhotoFile(file){
+    setStatus("Kép feldolgozása…");
+    loadImageFromFile(file).then(function(loaded){
+      return nativeDetect(loaded.img).then(function(hit){
+        if (hit) return { loaded: loaded, hit: hit };
+        return runCandidates(wholeImageCandidates(loaded.img), function(i, n){
+          setStatus("Kód keresése… (" + i + "/" + n + ")");
+        }).then(function(hit2){ return { loaded: loaded, hit: hit2 }; });
+      });
+    }).then(function(r){
+      if (r.hit){
+        URL.revokeObjectURL(r.loaded.url);
+        acceptParsed(r.hit);
+      } else {
+        openReview(r.loaded);
+        setStatus("Koppints a képen a kódra, és megpróbálom onnan.", "warn");
+      }
+    }).catch(function(){
+      setStatus("A kép feldolgozása nem sikerült.", "error");
+    });
+  }
+
+  el.photoBtn.addEventListener("click", function(){ el.photoInput.click(); });
+  var galleryLink = document.getElementById("galleryLink");
+  if (galleryLink){
+    galleryLink.addEventListener("click", function(ev){ ev.preventDefault(); el.galleryInput.click(); });
+  }
+
+  el.photoInput.addEventListener("change", function(e){
+    var file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (file) handlePhotoFile(file);
+  });
+  el.galleryInput.addEventListener("change", function(e){
+    var file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (file) handlePhotoFile(file);
+  });
+
+  el.reviewCancel.addEventListener("click", function(){
+    closeReview();
+    setStatus("Próbáld újra közelebbről, vagy használd a kézi rögzítést.", "warn");
+  });
+
+  el.reviewWrap.addEventListener("click", function(ev){
+    if (!reviewImgEl) return;
+    var img = el.reviewImg;
+    var rect = img.getBoundingClientRect();
+    var relX = ev.clientX - rect.left;
+    var relY = ev.clientY - rect.top;
+    if (relX < 0 || relY < 0 || relX > rect.width || relY > rect.height) return;
+    var wrapRect = el.reviewWrap.getBoundingClientRect();
+    el.reviewMarker.style.left = (ev.clientX - wrapRect.left) + "px";
+    el.reviewMarker.style.top = (ev.clientY - wrapRect.top) + "px";
+    el.reviewMarker.classList.add("show");
+    var px = relX / rect.width * reviewImgEl.img.naturalWidth;
+    var py = relY / rect.height * reviewImgEl.img.naturalHeight;
+    setStatus("Kód keresése a megjelölt pont körül…");
+    runCandidates(pointCandidates(reviewImgEl.img, px, py), function(i, n){
+      setStatus("Kód keresése… (" + i + "/" + n + ")");
+    }).then(function(hit){
+      if (hit) acceptParsed(hit);
+      else setStatus("Itt sem találtam kódot. Koppints pontosabban a kód közepére, vagy fotózz közelebbről (10–15 cm).", "warn");
+    });
+  });
+
+  function stopCamera(){
+    if (scanTimer){ clearInterval(scanTimer); scanTimer = null; }
+    if (stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; track = null; }
+    el.cameraWrap.classList.remove("active");
+    el.cameraToggle.textContent = "Kamera indítása";
+    el.torchBtn.classList.remove("on", "supported");
+    el.torchBtn.setAttribute("aria-pressed", "false");
+    torchOn = false;
+    setStatus(" ");
+  }
+
+  el.cameraToggle.addEventListener("click", function(){
+    if (stream) stopCamera(); else startCamera();
+  });
+
+  function setupTorch(){
+    if (!track || !track.getCapabilities) return;
+    try{
+      var caps = track.getCapabilities();
+      if (caps && caps.torch){ el.torchBtn.classList.add("supported"); }
+    }catch(e){}
+  }
+  el.torchBtn.addEventListener("click", function(){
+    if (!track) return;
+    torchOn = !torchOn;
+    track.applyConstraints({ advanced: [{ torch: torchOn }] }).then(function(){
+      el.torchBtn.classList.toggle("on", torchOn);
+      el.torchBtn.setAttribute("aria-pressed", torchOn ? "true" : "false");
+    }).catch(function(){
+      torchOn = !torchOn;
+      setStatus("A vaku kapcsolása nem sikerült ezen a készüléken.", "warn");
+    });
+  });
+
+  var liveBusy = false;
+
+  function onLiveHit(parsed){
+    liveBusy = false;
+    if (!parsed) return;
+    var now = Date.now();
+    if (parsed.raw === lastScanText && (now - lastScanAt) < 2500) return;
+    acceptParsed(parsed);
+  }
+
+  function scanFrame(){
+    if (!el.video.videoWidth || liveBusy) return;
+    liveBusy = true;
+    var vw = el.video.videoWidth, vh = el.video.videoHeight;
+
+    if (nativeDetector){
+      nativeDetector.detect(el.video)
+        .then(function(codes){
+          var best = null;
+          if (codes) for (var i = 0; i < codes.length; i++){
+            if (codes[i].rawValue) best = betterOf(best, parseCode(codes[i].rawValue));
+          }
+          // A natív detektor megléte nem jelenti, hogy minden Dell Data Matrix kódot
+          // felismer. Sikertelen találatnál ugyanazon a képkockán ZXinggel is próbálkozunk.
+          if (best) onLiveHit(best);
+          else {
+            var side = Math.min(vw, vh) * 0.7;
+            onLiveHit(decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 700));
+          }
+        })
+        .catch(function(){
+          var side = Math.min(vw, vh) * 0.7;
+          onLiveHit(decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 700));
+        });
+      return;
+    }
+
+    // A Data Matrix apró, ezért a képkocka közepét nagyítva vizsgáljuk.
+    var side = Math.min(vw, vh) * 0.7;
+    onLiveHit(decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 700));
+  }
+
+  // ---------- export ----------
+  function csvEscape(v){
+    var s = String(v == null ? "" : v);
+    // CSV/Excel formula injection elleni védelem felhasználói vagy importált mezőknél.
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    if (/[;"\n]/.test(s)) s = "\"" + s.replace(/"/g, "\"\"") + "\"";
+    return s;
+  }
+  function scanRowsForExport(){
+    return scans.slice().sort(function(a,b){ return (b.timestamp||"").localeCompare(a.timestamp||""); })
+      .map(function(s){
+        return {
+          "Service Tag": s.serviceTag,
+          "PPID": s.ppid || "",
+          "Express kód": (s.codeKind === "PPID") ? "" : (serviceTagToExpress(s.serviceTag) || ""),
+          "Eszköz típusa": s.deviceType || "",
+          "Dátum": fmtTime(s.timestamp),
+          "Beolvasó": s.scannedBy || "",
+          "Kód típusa": s.codeKind || "",
+          "Mesterlistában": s.masterMatch === true ? "Igen" : (s.masterMatch === false ? "Nem" : "")
+        };
+      });
+  }
+
+  el.exportBtn.addEventListener("click", function(){
+    var rows = scanRowsForExport();
+    if (!rows.length){ setStatus("Nincs exportálható beolvasás.", "warn"); return; }
+    if (typeof XLSX === "undefined"){
+      setStatus("Az Excel-komponens nem érhető el; használd a CSV gombot.", "error");
+      return;
+    }
+    var wb = XLSX.utils.book_new();
+    var ws = XLSX.utils.json_to_sheet(rows);
+    ws["!autofilter"] = { ref: ws["!ref"] };
+    ws["!cols"] = [{wch:14},{wch:26},{wch:14},{wch:18},{wch:20},{wch:20},{wch:16},{wch:16}];
+    XLSX.utils.book_append_sheet(wb, ws, "Beolvasások");
+    saveWorkbook("dell_service_tagek.xlsx", wb);
+  });
+
+  el.exportCsvBtn.addEventListener("click", function(){
+    var data = scanRowsForExport();
+    if (!data.length){ setStatus("Nincs exportálható beolvasás.", "warn"); return; }
+    var headers = Object.keys(data[0]);
+    var rows = data.map(function(r){ return headers.map(function(h){ return csvEscape(r[h]); }).join(";"); });
+    var csv = "﻿" + headers.map(csvEscape).join(";") + "\r\n" + rows.join("\r\n") + "\r\n";
+    saveCsv("service-tagek.csv", csv);
+  });
+
+  // Korábbi verzió a MyDell QR teljes URL-jét mentette el service tag helyett — javítjuk.
+  function migrateScans(){
+    var changed = false;
+    scans.forEach(function(s){
+      var t = tagFromUrl(s.serviceTag);
+      if (t){
+        s.serviceTag = t;
+        s.codeKind = "Service tag";
+        s.note = "QR-kód URL-jéből";
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  // ---------- init ----------
+  loadName();
+  updateStatusPill();
+  initNativeDetector();
+
+  var runtimeMessages = [];
+  if (location.protocol === "file:"){
+    runtimeMessages.push("A fotós, kézi és export funkciók közvetlen megnyitással is működnek. Ha az élő kamera nem indul, nyisd meg az oldalt HTTPS-en vagy localhost címen.");
+  }
+  if (typeof ZXing === "undefined") runtimeMessages.push("A kódolvasó komponens nem töltődött be; ellenőrizd az internetkapcsolatot.");
+  if (typeof XLSX === "undefined") runtimeMessages.push("Az Excel import/export komponens nem töltődött be; a kamera és a helyi mentés ettől még használható.");
+  if (runtimeMessages.length) showRuntimeWarning(runtimeMessages.join(" "));
+
+  window.addEventListener("pagehide", function(){ if (stream) stopCamera(); });
+
+  Promise.resolve(window.claude && window.claude.use ? window.claude.use("artifact") : null)
+    .then(function(cap){ artifactCap = cap; return window.claude && window.claude.use ? window.claude.use("downloads") : null; })
+    .then(function(dcap){ downloadsCap = dcap; })
+    .catch(function(){})
+    .then(function(){
+      if (artifactCap){
+        sharedMode = true;
+        var scansP = fetch("data/scans.json", { cache: "no-store" }).then(function(res){
+          if (res.ok) return res.json();
+          return artifactCap.publish({ "data/scans.json": "[]" }).catch(function(){}).then(function(){ return []; });
+        }).then(function(data){ scans = Array.isArray(data) ? data : []; })
+          .catch(function(){ scans = []; });
+        var masterP = fetchSharedMaster().then(function(data){ masterList = data; }).catch(function(){ masterList = null; });
+        return Promise.all([scansP, masterP]).then(function(){
+          // korábbi, csak helyben mentett beolvasások visszafésülése
+          var localScans = [];
+          try{
+            var raw = localStorage.getItem("cimkeolvaso_scans");
+            localScans = raw ? JSON.parse(raw) : [];
+          }catch(e){ localScans = []; }
+          if (localScans.length){
+            var byId = {};
+            scans.forEach(function(s){ byId[s.id] = s; });
+            localScans.forEach(function(s){ if (!byId[s.id]) scans.push(s); });
+          }
+          if (!masterList){ loadLocalMaster(); }
+        });
+      } else {
+        loadLocalScans();
+        loadLocalMaster();
+      }
+    })
+    .catch(function(){ loadLocalScans(); loadLocalMaster(); })
+    .then(function(){
+      updateStatusPill();
+      if (migrateScans()) persist();
+      renderList();
+      renderMaster();
+    });
+
+})();
+</script>
+
+</body>
+</html>
