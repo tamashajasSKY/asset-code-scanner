@@ -372,8 +372,8 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       <span class="master-summary" id="masterSummary">nincs betöltve</span>
     </button>
     <div class="master-body" id="masterBody">
-      <p class="section-intro">Tölts fel egy meglévő Excel (.xlsx) vagy CSV eszközlistát. Ha egy beolvasott service tag megtalálható benne, a rendszer a lista adott sorát megjelöli &bdquo;Ellenőrizve&rdquo;-ként a mai dátummal.</p>
-      <input type="file" id="masterFile" class="file-input" accept=".csv,.xlsx,.xls">
+      <p class="section-intro">Tölts fel egy meglévő Excel eszközlistát. A mesterlista forrása kizárólag a <strong>Data</strong> nevű munkalap: ha a beolvasott service tag ott megtalálható, a rendszer az adott sort &bdquo;Ellenőrizve&rdquo;-ként a mai dátummal jelöli.</p>
+      <input type="file" id="masterFile" class="file-input" accept=".xlsx,.xls">
       <div id="masterColumnPicker" style="display:none; flex-direction:column; gap:8px;">
         <div>
           <span class="field-label">Melyik oszlop tartalmazza a service tag&#8209;et / azonosítót?</span>
@@ -947,6 +947,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     var file = e.target.files[0];
     if (!file) return;
     var isBinary = /\.xlsx?$/i.test(file.name);
+    if (!isBinary){
+      setStatus("A mesterlistához Excel-fájl szükséges, benne egy Data nevű munkalappal.", "error");
+      return;
+    }
     if (typeof XLSX === "undefined"){
       setStatus("Az Excel/CSV beolvasó komponens nem töltődött be. Ellenőrizd az internetkapcsolatot, majd töltsd újra az oldalt.", "error");
       return;
@@ -954,17 +958,19 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     var reader = new FileReader();
     reader.onload = function(ev){
       try{
-        var wb = isBinary
-          ? XLSX.read(new Uint8Array(ev.target.result), { type: "array" })
-          : XLSX.read(ev.target.result, { type: "string" });
-        var sheet = wb.Sheets[wb.SheetNames[0]];
+        var wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
+        var sheet = wb.Sheets["Data"];
+        if (!sheet){
+          setStatus("A kiválasztott Excel-fájlban nincs Data nevű munkalap. A mesterlista csak ezt a lapot használja.", "error");
+          return;
+        }
         var headerRow = (XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })[0] || []).map(String);
         var rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
         if (!headerRow.length || !rows.length){
           setStatus("A fájl üresnek tűnik, vagy nem sikerült beolvasni.", "error");
           return;
         }
-        pendingMaster = { headers: headerRow, rows: rows };
+        pendingMaster = { headers: headerRow, rows: rows, sheetName: "Data" };
         el.masterColumnSelect.innerHTML = headerRow.map(function(h){
           return "<option value=\"" + escapeHtml(h) + "\">" + escapeHtml(h) + "</option>";
         }).join("");
@@ -977,7 +983,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           el.masterToggle.classList.add("open");
         }
       }catch(err){
-        setStatus("Nem sikerült beolvasni a fájlt. Ellenőrizd, hogy .csv vagy .xlsx formátumú-e.", "error");
+        setStatus("Nem sikerült beolvasni az Excel-fájlt. Ellenőrizd, hogy megnyitható-e, és tartalmaz-e Data nevű munkalapot.", "error");
       }
     };
     if (isBinary) reader.readAsArrayBuffer(file); else reader.readAsText(file, "UTF-8");
@@ -997,11 +1003,11 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       var hh = String(pendingMaster.headers[t]);
       if (hh !== col && /t[íi]pus|type|eszk[öo]z|kateg[óo]ri/i.test(hh)){ typeCol = hh; break; }
     }
-    masterList = { tagColumn: col, typeColumn: typeCol, headers: pendingMaster.headers, rows: rows };
+    masterList = { tagColumn: col, typeColumn: typeCol, sheetName: pendingMaster.sheetName, headers: pendingMaster.headers, rows: rows };
     pendingMaster = null;
     persistMaster();
     renderMaster();
-    setStatus("Mesterlista betöltve: " + rows.length + " sor.", "success");
+    setStatus("Mesterlista betöltve a Data munkalapról: " + rows.length + " sor.", "success");
   });
 
   el.masterReset.addEventListener("click", function(){
@@ -1038,7 +1044,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     }
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
-    XLSX.utils.book_append_sheet(wb, ws, "Mesterlista");
+    XLSX.utils.book_append_sheet(wb, ws, "Data");
     saveWorkbook("mesterlista_frissitve.xlsx", wb);
   });
 
