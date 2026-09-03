@@ -84,6 +84,9 @@ h1,h2,h3,button,.mono{
   box-shadow:var(--shadow); padding:14px; margin-bottom:14px;
   display:flex; flex-direction:column; gap:12px;
 }
+.option-toggle{ display:flex; align-items:flex-start; gap:9px; font-size:13.5px; color:var(--ink-muted); cursor:pointer; }
+.option-toggle input{ width:18px; height:18px; margin-top:1px; accent-color:var(--accent); flex:0 0 auto; }
+.option-toggle strong{ display:block; color:var(--ink); font-size:14px; }
 .field-label{
   font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
   color:var(--ink-muted); display:block; margin-bottom:6px;
@@ -323,6 +326,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         <button type="button" data-type="Egyéb" aria-pressed="false">Egyéb</button>
       </div>
     </div>
+    <label class="option-toggle">
+      <input type="checkbox" id="genericCodeToggle">
+      <span><strong>Egyéb vonalkódok beolvasása</strong>Alapesetben csak Dell Service Tag, Express kód és PPID menthető. Bekapcsolva a nem Dell kódok is rögzülnek, külön figyelmeztetéssel.</span>
+    </label>
   </div>
 
   <div class="camera-card">
@@ -438,6 +445,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   var artifactCap = null;
   var downloadsCap = null;
   var deviceType = "Monitor";
+  var allowGenericCodes = false;
   var stream = null;
   var track = null;
   var torchOn = false;
@@ -459,6 +467,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     runtimeWarning: document.getElementById("runtimeWarning"),
     scannerName: document.getElementById("scannerName"),
     deviceTypeGroup: document.getElementById("deviceTypeGroup"),
+    genericCodeToggle: document.getElementById("genericCodeToggle"),
     cameraWrap: document.getElementById("cameraWrap"),
     video: document.getElementById("video"),
     scanFrame: document.getElementById("scanFrame"),
@@ -550,6 +559,15 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   }
   function saveName(){
     try{ localStorage.setItem("cimkeolvaso_name", el.scannerName.value || ""); }catch(e){}
+  }
+  function loadGenericCodeSetting(){
+    try{ allowGenericCodes = localStorage.getItem("cimkeolvaso_generic_codes") === "true"; }catch(e){ allowGenericCodes = false; }
+    el.genericCodeToggle.checked = allowGenericCodes;
+  }
+  function saveGenericCodeSetting(){
+    allowGenericCodes = !!el.genericCodeToggle.checked;
+    try{ localStorage.setItem("cimkeolvaso_generic_codes", String(allowGenericCodes)); }catch(e){}
+    setStatus(allowGenericCodes ? "Az egyéb vonalkódok beolvasása engedélyezve. Ezek nem kerülnek a mesterlista-ellenőrzésbe." : "Az egyéb vonalkódok beolvasása kikapcsolva.", "warn");
   }
   function loadLocalScans(){
     try{
@@ -746,7 +764,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         var matchBadge = "";
         if (s.masterMatch === true) matchBadge = "<span class=\"badge match-yes\">&#10003; lista</span>";
         else if (s.masterMatch === false) matchBadge = "<span class=\"badge match-no\">&#10007; lista</span>";
-        var kindBadge = (s.codeKind === "PPID") ? "<span class=\"badge match-no\">PPID</span>" : "";
+        var kindBadge = (s.codeKind === "PPID") ? "<span class=\"badge match-no\">PPID</span>" : (s.codeKind === "Egyéb vonalkód" ? "<span class=\"badge match-no\">nem Dell</span>" : "");
         var locationMeta = s.photoLocation
           ? "<br>GPS: " + escapeHtml(s.photoLocation.latitude + ", " + s.photoLocation.longitude)
             + (s.photoLocation.accuracyMeters ? " (&plusmn;" + escapeHtml(s.photoLocation.accuracyMeters) + " m)" : "")
@@ -844,28 +862,31 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 
   function addScan(tag, source, opts){
     opts = opts || {};
-    var trimmed = (tag || "").trim().toUpperCase();
-    if (!trimmed) return;
+    var rawValue = String(tag || "").trim();
+    var trimmed = rawValue.toUpperCase();
+    if (!rawValue) return;
+    var isGeneric = opts.generic === true;
     var kind = opts.kind || codeKind(trimmed);
-    if (kind !== "PPID" && (!/^[0-9A-Z]{7}$/.test(trimmed) || /^\d{7}$/.test(trimmed))){
+    if (!isGeneric && kind !== "PPID" && (!/^[0-9A-Z]{7}$/.test(trimmed) || /^\d{7}$/.test(trimmed))){
       setStatus("A talált adat nem érvényes 7 karakteres Dell Service Tag: " + trimmed, "warn");
       flashFrame(false);
       return;
     }
-    if (kind === "PPID" && codeKind(trimmed) !== "PPID"){
+    if (!isGeneric && kind === "PPID" && codeKind(trimmed) !== "PPID"){
       setStatus("A talált PPID formátuma nem érvényes.", "warn");
       return;
     }
-    var existing = scans.find(function(s){ return s.serviceTag.toLowerCase() === trimmed.toLowerCase(); });
+    var storedValue = isGeneric ? rawValue : trimmed;
+    var existing = scans.find(function(s){ return String(s.serviceTag || "").toLowerCase() === storedValue.toLowerCase(); });
     if (existing){
       setStatus("Már szerepel a listában: " + trimmed + " (" + fmtTime(existing.timestamp) + ")", "warn");
       flashFrame(false);
       return;
     }
-    var matchResult = checkMasterList(trimmed);
+    var matchResult = isGeneric ? null : checkMasterList(trimmed);
     var record = {
       id: uid(),
-      serviceTag: trimmed,
+      serviceTag: storedValue,
       ppid: opts.ppid || "",
       deviceType: (matchResult && matchResult.deviceType) || deviceType,
       timestamp: nowIso(),
@@ -882,7 +903,9 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     renderList();
     persist();
     captureEvidenceLocation(record);
-    if (kind === "PPID"){
+    if (isGeneric){
+      setStatus("Rögzítve, de ez nem Dell Service Tag: " + storedValue + " — a mesterlista nem ellenőrizte.", "warn");
+    } else if (kind === "PPID"){
       setStatus("Rögzítve, de ez PPID kód, nem service tag: " + trimmed
         + " — a címkén keresd az „ST” vagy „S/N” feliratú, rövidebb kódot.", "warn");
     } else if (matchResult && matchResult.found){
@@ -933,6 +956,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 
   el.scannerName.addEventListener("change", saveName);
   el.scannerName.addEventListener("blur", saveName);
+  el.genericCodeToggle.addEventListener("change", saveGenericCodeSetting);
 
   // ---------- manual entry ----------
   el.manualToggle.addEventListener("click", function(){
@@ -1506,8 +1530,12 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   function acceptParsed(parsed, photo, photoLocation){
     if (!parsed) return;
     if (parsed.rank === 0){
-      setStatus("A kód olvasható, de nem azonosítható Dell Service Tagként: " + parsed.tag, "warn");
-      flashFrame(false);
+      if (!allowGenericCodes){
+        setStatus("A kód olvasható, de nem azonosítható Dell Service Tagként: " + parsed.tag + ". Az „Egyéb vonalkódok” beállítással rögzíthető.", "warn");
+        flashFrame(false);
+        return;
+      }
+      addScan(parsed.raw, "Kód", { kind: "Egyéb vonalkód", generic: true, note: "Nem Dell Service Tag", photo: photo || "", photoLocation: photoLocation || null });
       return;
     }
     lastScanText = parsed.raw;
@@ -1727,6 +1755,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           "Dátum": fmtTime(s.timestamp),
           "Beolvasó": s.scannedBy || "",
           "Kód típusa": s.codeKind || "",
+          "Nem Dell figyelmeztetés": s.codeKind === "Egyéb vonalkód" ? "Igen" : "",
           "GPS szélesség": s.photoLocation ? s.photoLocation.latitude : "",
           "GPS hosszúság": s.photoLocation ? s.photoLocation.longitude : "",
           "GPS pontosság (m)": s.photoLocation ? s.photoLocation.accuracyMeters : "",
@@ -1783,6 +1812,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 
   // ---------- init ----------
   loadName();
+  loadGenericCodeSetting();
   updateStatusPill();
   initNativeDetector();
 
