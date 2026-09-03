@@ -269,6 +269,10 @@ h1,h2,h3,button,.mono{
 }
 .scan-row .badge.manual{ background:var(--tag-bg); color:var(--tag); }
 .scan-row .grow{ flex:1; min-width:0; }
+.scan-row .scan-photo{
+  width:42px; height:42px; object-fit:cover; border-radius:7px; border:1px solid var(--border);
+  background:var(--surface-2); cursor:zoom-in; flex:0 0 auto;
+}
 .scan-row .del{
   background:none; border:none; color:var(--ink-faint); font-size:18px; cursor:pointer;
   padding:6px; line-height:1; border-radius:6px;
@@ -286,6 +290,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 .foot-note{ font-size:11.5px; color:var(--ink-faint); text-align:center; margin-top:14px; }
 .export-actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 .export-actions .btn{ min-height:40px; padding:9px 14px; font-size:13.5px; }
+.export-actions .export-name{ width:175px; min-height:40px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:13px 'IBM Plex Mono',monospace; }
 .runtime-warning{
   display:none; margin-bottom:14px; padding:10px 12px; border-radius:9px;
   background:var(--tag-bg); color:var(--tag); font-size:13px; border:1px solid currentColor;
@@ -376,6 +381,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       <input type="file" id="masterFile" class="file-input" accept=".xlsx,.xls">
       <div id="masterColumnPicker" style="display:none; flex-direction:column; gap:8px;">
         <div>
+          <span class="field-label">Melyik munkalapot használjuk?</span>
+          <select id="masterSheetSelect"></select>
+        </div>
+        <div>
           <span class="field-label">Melyik oszlop tartalmazza a service tag&#8209;et / azonosítót?</span>
           <select id="masterColumnSelect"></select>
         </div>
@@ -406,6 +415,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   <footer class="appfoot">
     <span class="foot-note" id="todayCount" style="margin:0;">Ma: 0 db</span>
     <div class="export-actions">
+      <input type="text" id="exportFilename" class="export-name" value="dell_service_tagek" maxlength="80" aria-label="Exportfájl neve, kiterjesztés nélkül" title="Exportfájl neve (kiterjesztés nélkül)">
       <button type="button" class="btn btn-primary" id="exportBtn">Exportálás Excelbe</button>
       <button type="button" class="btn btn-secondary" id="exportCsvBtn">CSV</button>
     </div>
@@ -479,11 +489,13 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     todayCount: document.getElementById("todayCount"),
     exportBtn: document.getElementById("exportBtn"),
     exportCsvBtn: document.getElementById("exportCsvBtn"),
+    exportFilename: document.getElementById("exportFilename"),
     masterToggle: document.getElementById("masterToggle"),
     masterBody: document.getElementById("masterBody"),
     masterSummary: document.getElementById("masterSummary"),
     masterFile: document.getElementById("masterFile"),
     masterColumnPicker: document.getElementById("masterColumnPicker"),
+    masterSheetSelect: document.getElementById("masterSheetSelect"),
     masterColumnSelect: document.getElementById("masterColumnSelect"),
     masterConfirm: document.getElementById("masterConfirm"),
     masterStats: document.getElementById("masterStats"),
@@ -735,12 +747,17 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         if (s.masterMatch === true) matchBadge = "<span class=\"badge match-yes\">&#10003; lista</span>";
         else if (s.masterMatch === false) matchBadge = "<span class=\"badge match-no\">&#10007; lista</span>";
         var kindBadge = (s.codeKind === "PPID") ? "<span class=\"badge match-no\">PPID</span>" : "";
+        var locationMeta = s.photoLocation
+          ? "<br>GPS: " + escapeHtml(s.photoLocation.latitude + ", " + s.photoLocation.longitude)
+            + (s.photoLocation.accuracyMeters ? " (&plusmn;" + escapeHtml(s.photoLocation.accuracyMeters) + " m)" : "")
+          : "";
         return (
           "<div class=\"scan-row\" data-id=\"" + escapeHtml(s.id) + "\">" +
+            (s.photo ? "<img class=\"scan-photo\" src=\"" + s.photo + "\" alt=\"Beolvasáskori fénykép: " + escapeHtml(s.serviceTag) + "\" data-photo=\"" + escapeHtml(s.id) + "\">" : "") +
             "<div class=\"grow\">" +
               "<div class=\"tag-val\">" + escapeHtml(s.serviceTag) + "</div>" +
               "<div class=\"meta\">" + escapeHtml(s.deviceType) + " &middot; " + escapeHtml(fmtTime(s.timestamp)) + " &middot; " + escapeHtml(s.scannedBy)
-                + (s.ppid && s.ppid !== s.serviceTag ? "<br>PPID: " + escapeHtml(s.ppid) : "") + "</div>" +
+                + (s.ppid && s.ppid !== s.serviceTag ? "<br>PPID: " + escapeHtml(s.ppid) : "") + locationMeta + "</div>" +
             "</div>" +
             kindBadge +
             matchBadge +
@@ -752,6 +769,15 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     }
     var todayN = scans.filter(function(s){ return isToday(s.timestamp); }).length;
     el.todayCount.textContent = "Ma: " + todayN + " db";
+    Array.prototype.forEach.call(el.scanList.querySelectorAll(".scan-photo"), function(img){
+      img.addEventListener("click", function(){
+        var scan = scans.find(function(s){ return s.id === img.getAttribute("data-photo"); });
+        if (scan && scan.photo){
+          var win = window.open();
+          if (win){ win.document.write("<title>Beolvasáskori fénykép</title><img src=\"" + scan.photo + "\" alt=\"Beolvasáskori fénykép\" style=\"max-width:100%;height:auto\">"); }
+        }
+      });
+    });
   }
 
   // ---------- Dell Express Service Code <-> Service Tag (base36 / base10) ----------
@@ -782,6 +808,40 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   }
 
   // ---------- adding scans ----------
+  function captureEvidenceLocation(record){
+    if (!record || !record.photo || record.photoLocation || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(function(position){
+      record.photoLocation = {
+        latitude: Number(position.coords.latitude.toFixed(6)),
+        longitude: Number(position.coords.longitude.toFixed(6)),
+        accuracyMeters: Math.round(position.coords.accuracy || 0),
+        capturedAt: nowIso(),
+        source: "Készülék"
+      };
+      persist();
+      renderList();
+    }, function(){
+      // A helyengedély megtagadása vagy a sikertelen helymeghatározás nem akadályozza a beolvasást.
+    }, { enableHighAccuracy: true, maximumAge: 30000, timeout: 8000 });
+  }
+
+  function captureEvidenceImage(source){
+    if (!source || !source.videoWidth && !source.naturalWidth) return "";
+    var sw = source.videoWidth || source.naturalWidth;
+    var sh = source.videoHeight || source.naturalHeight;
+    if (!sw || !sh) return "";
+    var maxSide = 480;
+    var ratio = Math.min(1, maxSide / Math.max(sw, sh));
+    var w = Math.max(1, Math.round(sw * ratio));
+    var h = Math.max(1, Math.round(sh * ratio));
+    var photoCanvas = document.createElement("canvas");
+    photoCanvas.width = w; photoCanvas.height = h;
+    try{
+      photoCanvas.getContext("2d").drawImage(source, 0, 0, w, h);
+      return photoCanvas.toDataURL("image/jpeg", 0.65);
+    }catch(e){ return ""; }
+  }
+
   function addScan(tag, source, opts){
     opts = opts || {};
     var trimmed = (tag || "").trim().toUpperCase();
@@ -813,12 +873,15 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       source: source,
       codeKind: kind,
       note: opts.note || "",
+      photo: opts.photo || "",
+      photoLocation: opts.photoLocation || null,
       masterMatch: matchResult ? matchResult.found : null,
       masterWasAlreadyVerified: matchResult && matchResult.found ? matchResult.alreadyVerified : null
     };
     scans.unshift(record);
     renderList();
     persist();
+    captureEvidenceLocation(record);
     if (kind === "PPID"){
       setStatus("Rögzítve, de ez PPID kód, nem service tag: " + trimmed
         + " — a címkén keresd az „ST” vagy „S/N” feliratú, rövidebb kódot.", "warn");
@@ -943,6 +1006,24 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     return headers[0] || "";
   }
 
+  function normaliseSheetName(name){
+    return String(name || "").replace(/\u00a0/g, " ").trim().toLowerCase();
+  }
+
+  function selectMasterSheet(sheetName){
+    if (!pendingMaster || !pendingMaster.sheets || !pendingMaster.sheets[sheetName]) return;
+    var selected = pendingMaster.sheets[sheetName];
+    pendingMaster.headers = selected.headers;
+    pendingMaster.rows = selected.rows;
+    pendingMaster.sheetName = sheetName;
+    el.masterSheetSelect.value = sheetName;
+    el.masterColumnSelect.innerHTML = selected.headers.map(function(h){
+      return "<option value=\"" + escapeHtml(h) + "\">" + escapeHtml(h) + "</option>";
+    }).join("");
+    el.masterColumnSelect.value = guessTagColumn(selected.headers);
+    el.masterSummary.textContent = selected.rows.length + " sor a „" + sheetName + "” munkalapról";
+  }
+
   el.masterFile.addEventListener("change", function(e){
     var file = e.target.files[0];
     if (!file) return;
@@ -959,22 +1040,22 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     reader.onload = function(ev){
       try{
         var wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
-        var sheet = wb.Sheets["Data"];
-        if (!sheet){
-          setStatus("A kiválasztott Excel-fájlban nincs Data nevű munkalap. A mesterlista csak ezt a lapot használja.", "error");
-          return;
-        }
-        var headerRow = (XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })[0] || []).map(String);
-        var rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-        if (!headerRow.length || !rows.length){
+        var sheets = {};
+        wb.SheetNames.forEach(function(name){
+          var sheet = wb.Sheets[name];
+          var headers = (XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })[0] || []).map(String);
+          var sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+          if (headers.length && sheetRows.length) sheets[name] = { headers: headers, rows: sheetRows };
+        });
+        var availableSheets = Object.keys(sheets);
+        if (!availableSheets.length){
           setStatus("A fájl üresnek tűnik, vagy nem sikerült beolvasni.", "error");
           return;
         }
-        pendingMaster = { headers: headerRow, rows: rows, sheetName: "Data" };
-        el.masterColumnSelect.innerHTML = headerRow.map(function(h){
-          return "<option value=\"" + escapeHtml(h) + "\">" + escapeHtml(h) + "</option>";
-        }).join("");
-        el.masterColumnSelect.value = guessTagColumn(headerRow);
+        var preferred = availableSheets.find(function(name){ return normaliseSheetName(name) === "data"; }) || availableSheets[0];
+        pendingMaster = { sheets: sheets, headers: [], rows: [], sheetName: "" };
+        el.masterSheetSelect.innerHTML = availableSheets.map(function(name){ return "<option value=\"" + escapeHtml(name) + "\">" + escapeHtml(name) + "</option>"; }).join("");
+        selectMasterSheet(preferred);
         el.masterColumnPicker.style.display = "flex";
         el.masterStats.style.display = "none";
         el.masterSummary.textContent = rows.length + " sor beolvasva";
@@ -989,9 +1070,12 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     if (isBinary) reader.readAsArrayBuffer(file); else reader.readAsText(file, "UTF-8");
   });
 
+  el.masterSheetSelect.addEventListener("change", function(){ selectMasterSheet(el.masterSheetSelect.value); });
+
   el.masterConfirm.addEventListener("click", function(){
     if (!pendingMaster) return;
     var col = el.masterColumnSelect.value;
+    var sheetName = pendingMaster.sheetName;
     var rows = pendingMaster.rows.map(function(r){
       var copy = Object.assign({}, r);
       copy.__verified = r[VERIFIED_COL] === "Igen" ? "Igen" : "Nem";
@@ -1007,7 +1091,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     pendingMaster = null;
     persistMaster();
     renderMaster();
-    setStatus("Mesterlista betöltve a Data munkalapról: " + rows.length + " sor.", "success");
+    setStatus("Mesterlista betöltve a „" + sheetName + "” munkalapról: " + rows.length + " sor.", "success");
   });
 
   el.masterReset.addEventListener("click", function(){
@@ -1044,7 +1128,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     }
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.json_to_sheet(data.rows, { header: data.headers });
-    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    XLSX.utils.book_append_sheet(wb, ws, masterList.sheetName || "Data");
     saveWorkbook("mesterlista_frissitve.xlsx", wb);
   });
 
@@ -1338,6 +1422,45 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   // ---------- fotós mód ----------
   var reviewImgEl = null;
 
+  function readExifGps(file){
+    return new Promise(function(resolve){
+      if (!file || !/^image\/jpe?g$/i.test(file.type || "")){ resolve(null); return; }
+      var reader = new FileReader();
+      reader.onerror = function(){ resolve(null); };
+      reader.onload = function(){
+        try{
+          var view = new DataView(reader.result), len = view.byteLength, pos = 2;
+          if (view.getUint16(0, false) !== 0xffd8) throw new Error("not jpeg");
+          while (pos + 4 < len){
+            if (view.getUint8(pos) !== 0xff) break;
+            var marker = view.getUint8(pos + 1), size = view.getUint16(pos + 2, false);
+            if (marker === 0xe1 && pos + 10 < len && view.getUint32(pos + 4, false) === 0x45786966){
+              var t = pos + 10, little = view.getUint16(t, false) === 0x4949;
+              var u16 = function(o){ return view.getUint16(o, little); };
+              var u32 = function(o){ return view.getUint32(o, little); };
+              if (u16(t + 2) !== 42) throw new Error("bad tiff");
+              var base = t, ifd0 = base + u32(t + 4), n0 = u16(ifd0), gpsIfd = 0;
+              for (var i = 0; i < n0; i++){ var e0 = ifd0 + 2 + i * 12; if (u16(e0) === 0x8825) gpsIfd = base + u32(e0 + 8); }
+              if (!gpsIfd) throw new Error("no gps");
+              var gps = {}, ng = u16(gpsIfd);
+              for (var j = 0; j < ng; j++){
+                var e = gpsIfd + 2 + j * 12, tag = u16(e), type = u16(e + 2), count = u32(e + 4), value = e + 8;
+                if (type === 2) gps[tag] = String.fromCharCode(view.getUint8(value));
+                if (type === 5 && count === 3){ var off = base + u32(value), a = u32(off) / u32(off + 4), b = u32(off + 8) / u32(off + 12), c = u32(off + 16) / u32(off + 20); gps[tag] = a + b / 60 + c / 3600; }
+              }
+              if (typeof gps[2] === "number" && typeof gps[4] === "number"){
+                resolve({ latitude: Number((gps[1] === "S" ? -gps[2] : gps[2]).toFixed(6)), longitude: Number((gps[3] === "W" ? -gps[4] : gps[4]).toFixed(6)), accuracyMeters: 0, capturedAt: nowIso(), source: "EXIF" }); return;
+              }
+            }
+            pos += 2 + size;
+          }
+        }catch(e){}
+        resolve(null);
+      };
+      reader.readAsArrayBuffer(file.slice(0, 256 * 1024));
+    });
+  }
+
   function loadImageFromFile(file){
     return new Promise(function(resolve, reject){
       var url = URL.createObjectURL(file);
@@ -1365,8 +1488,8 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 
   var pendingPpid = null;
 
-  function openPpidPanel(ppid){
-    pendingPpid = ppid;
+  function openPpidPanel(ppid, photo, photoLocation){
+    pendingPpid = { value: ppid, photo: photo || "", photoLocation: photoLocation || null };
     el.ppidValue.textContent = ppid;
     el.ppidInput.value = "";
     el.ppidDerived.textContent = "";
@@ -1380,7 +1503,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     el.ppidPanel.classList.remove("open");
   }
 
-  function acceptParsed(parsed){
+  function acceptParsed(parsed, photo, photoLocation){
     if (!parsed) return;
     if (parsed.rank === 0){
       setStatus("A kód olvasható, de nem azonosítható Dell Service Tagként: " + parsed.tag, "warn");
@@ -1391,10 +1514,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     lastScanAt = Date.now();
     closeReview();
     if (parsed.kind === "PPID"){
-      openPpidPanel(parsed.tag);
+      openPpidPanel(parsed.tag, photo, photoLocation);
       return;
     }
-    addScan(parsed.tag, "Kód", { kind: parsed.kind, note: parsed.note });
+    addScan(parsed.tag, "Kód", { kind: parsed.kind, note: parsed.note, photo: photo || "", photoLocation: photoLocation || null });
   }
 
   // Az input elfogadja a 7 karakteres Service Tag-et és a 8–13 jegyű Express kódot is.
@@ -1428,13 +1551,13 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     }
     var ppid = pendingPpid;
     closePpidPanel();
-    addScan(r.tag, "Kód", { ppid: ppid, kind: "Service tag" });
+    addScan(r.tag, "Kód", { ppid: ppid.value, kind: "Service tag", photo: ppid.photo, photoLocation: ppid.photoLocation });
   });
 
   el.ppidSkip.addEventListener("click", function(){
     var ppid = pendingPpid;
     closePpidPanel();
-    addScan(ppid, "Kód", { ppid: ppid, kind: "PPID" });
+    addScan(ppid.value, "Kód", { ppid: ppid.value, kind: "PPID", photo: ppid.photo, photoLocation: ppid.photoLocation });
   });
 
   el.ppidInput.addEventListener("keydown", function(e){
@@ -1443,7 +1566,8 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 
   function handlePhotoFile(file){
     setStatus("Kép feldolgozása…");
-    loadImageFromFile(file).then(function(loaded){
+    Promise.all([loadImageFromFile(file), readExifGps(file)]).then(function(result){
+      var loaded = result[0]; loaded.photoLocation = result[1];
       return nativeDetect(loaded.img).then(function(hit){
         if (hit) return { loaded: loaded, hit: hit };
         return runCandidates(wholeImageCandidates(loaded.img), function(i, n){
@@ -1452,8 +1576,9 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       });
     }).then(function(r){
       if (r.hit){
+        var photo = captureEvidenceImage(r.loaded.img);
         URL.revokeObjectURL(r.loaded.url);
-        acceptParsed(r.hit);
+        acceptParsed(r.hit, photo, r.loaded.photoLocation);
       } else {
         openReview(r.loaded);
         setStatus("Koppints a képen a kódra, és megpróbálom onnan.", "warn");
@@ -1502,7 +1627,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     runCandidates(pointCandidates(reviewImgEl.img, px, py), function(i, n){
       setStatus("Kód keresése… (" + i + "/" + n + ")");
     }).then(function(hit){
-      if (hit) acceptParsed(hit);
+      if (hit) acceptParsed(hit, captureEvidenceImage(reviewImgEl.img), reviewImgEl.photoLocation);
       else setStatus("Itt sem találtam kódot. Koppints pontosabban a kód közepére, vagy fotózz közelebbről (10–15 cm).", "warn");
     });
   });
@@ -1548,7 +1673,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     if (!parsed) return;
     var now = Date.now();
     if (parsed.raw === lastScanText && (now - lastScanAt) < 2500) return;
-    acceptParsed(parsed);
+    acceptParsed(parsed, captureEvidenceImage(el.video));
   }
 
   function scanFrame(){
@@ -1602,9 +1727,19 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           "Dátum": fmtTime(s.timestamp),
           "Beolvasó": s.scannedBy || "",
           "Kód típusa": s.codeKind || "",
+          "GPS szélesség": s.photoLocation ? s.photoLocation.latitude : "",
+          "GPS hosszúság": s.photoLocation ? s.photoLocation.longitude : "",
+          "GPS pontosság (m)": s.photoLocation ? s.photoLocation.accuracyMeters : "",
+          "GPS forrás": s.photoLocation ? (s.photoLocation.source || "Készülék") : "",
           "Mesterlistában": s.masterMatch === true ? "Igen" : (s.masterMatch === false ? "Nem" : "")
         };
       });
+  }
+
+  function exportBaseName(){
+    var raw = (el.exportFilename.value || "dell_service_tagek").trim().replace(/\.(xlsx|csv)$/i, "");
+    var safe = raw.replace(/[\\\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim().slice(0, 80);
+    return safe || "dell_service_tagek";
   }
 
   el.exportBtn.addEventListener("click", function(){
@@ -1619,7 +1754,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     ws["!autofilter"] = { ref: ws["!ref"] };
     ws["!cols"] = [{wch:14},{wch:26},{wch:14},{wch:18},{wch:20},{wch:20},{wch:16},{wch:16}];
     XLSX.utils.book_append_sheet(wb, ws, "Beolvasások");
-    saveWorkbook("dell_service_tagek.xlsx", wb);
+    saveWorkbook(exportBaseName() + ".xlsx", wb);
   });
 
   el.exportCsvBtn.addEventListener("click", function(){
@@ -1628,7 +1763,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     var headers = Object.keys(data[0]);
     var rows = data.map(function(r){ return headers.map(function(h){ return csvEscape(r[h]); }).join(";"); });
     var csv = "﻿" + headers.map(csvEscape).join(";") + "\r\n" + rows.join("\r\n") + "\r\n";
-    saveCsv("service-tagek.csv", csv);
+    saveCsv(exportBaseName() + ".csv", csv);
   });
 
   // Korábbi verzió a MyDell QR teljes URL-jét mentette el service tag helyett — javítjuk.
