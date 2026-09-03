@@ -267,6 +267,7 @@ h1,h2,h3,button,.mono{
 .scan-row .master-info.yes{ color:var(--good); }
 .scan-row .master-info.no{ color:var(--bad); }
 .scan-row .master-info.unknown{ color:var(--ink-muted); }
+.scan-row .type-warning{ display:block; margin-top:3px; color:var(--bad); font-size:12px; font-weight:700; }
 .scan-row .badge{
   font-size:10.5px; font-weight:600; padding:3px 7px; border-radius:6px;
   background:var(--surface-2); color:var(--ink-muted); text-transform:uppercase; letter-spacing:.03em;
@@ -753,6 +754,22 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     return { found: true, alreadyVerified: alreadyVerified, row: row, deviceType: typeFromList };
   }
 
+  function normalizeDeviceType(value){
+    var v = String(value || "").toLowerCase();
+    try{ v = v.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }catch(e){}
+    if (/monitor|display|kepernyo/.test(v)) return "Monitor";
+    if (/dokkol|dock|port replicator/.test(v)) return "Dokkoló";
+    if (/laptop|notebook|portable/.test(v)) return "Laptop";
+    return null;
+  }
+
+  function hasTypeMismatch(selectedType, typeFromList){
+    var selected = normalizeDeviceType(selectedType);
+    var expected = normalizeDeviceType(typeFromList);
+    // Az "Egyéb" és az ismeretlen kategória nem elég pontos automatikus eltéréshez.
+    return !!(selected && expected && selected !== expected);
+  }
+
   function renderMaster(){
     if (!masterList || !masterList.rows || !masterList.rows.length){
       el.masterSummary.textContent = "nincs betöltve";
@@ -791,13 +808,16 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           : s.masterMatch === false
             ? "<span class=\"master-info no\">Mesterlista: nem szerepel</span>"
             : "<span class=\"master-info unknown\">Mesterlista: nincs ellenőrzési eredmény</span>";
+        var typeWarning = s.typeMismatch
+          ? "<span class=\"type-warning\">Típuseltérés: kijelölt „" + escapeHtml(s.selectedDeviceType || "") + "”, mesterlista: „" + escapeHtml(s.masterDeviceType || s.deviceType || "") + "”</span>"
+          : "";
         return (
           "<div class=\"scan-row\" data-id=\"" + escapeHtml(s.id) + "\">" +
             (s.photo ? "<img class=\"scan-photo\" src=\"" + s.photo + "\" alt=\"Beolvasáskori fénykép: " + escapeHtml(s.serviceTag) + "\" data-photo=\"" + escapeHtml(s.id) + "\">" : "") +
             "<div class=\"grow\">" +
               "<div class=\"tag-val\">" + escapeHtml(s.serviceTag) + "</div>" +
               "<div class=\"meta\">" + escapeHtml(s.deviceType) + " &middot; " + escapeHtml(fmtTime(s.timestamp)) + " &middot; " + escapeHtml(s.scannedBy)
-                + (s.ppid && s.ppid !== s.serviceTag ? "<br>PPID: " + escapeHtml(s.ppid) : "") + locationMeta + masterInfo + "</div>" +
+                + (s.ppid && s.ppid !== s.serviceTag ? "<br>PPID: " + escapeHtml(s.ppid) : "") + locationMeta + masterInfo + typeWarning + "</div>" +
             "</div>" +
             kindBadge +
             matchBadge +
@@ -907,11 +927,16 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       return;
     }
     var matchResult = isGeneric ? null : checkMasterList(trimmed);
+    var typeFromList = matchResult && matchResult.deviceType ? matchResult.deviceType : "";
+    var typeMismatch = !isGeneric && !!(matchResult && matchResult.found && hasTypeMismatch(deviceType, typeFromList));
     var record = {
       id: uid(),
       serviceTag: storedValue,
       ppid: opts.ppid || "",
       deviceType: (matchResult && matchResult.deviceType) || deviceType,
+      selectedDeviceType: deviceType,
+      masterDeviceType: typeFromList,
+      typeMismatch: typeMismatch,
       vendor: deviceVendor,
       timestamp: nowIso(),
       scannedBy: getScannerName(),
@@ -932,6 +957,8 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     } else if (kind === "PPID"){
       setStatus("Rögzítve, de ez PPID kód, nem service tag: " + trimmed
         + " — a címkén keresd az „ST” vagy „S/N” feliratú, rövidebb kódot.", "warn");
+    } else if (typeMismatch){
+      setStatus("⚠ Típuseltérés: kijelölt „" + deviceType + "”, a mesterlista szerint „" + typeFromList + "”. A beolvasás rögzítve maradt.", "warn");
     } else if (matchResult && matchResult.found){
       setStatus("✓ Megtalálva a mesterlistában — rögzítve: " + trimmed
         + (matchResult.deviceType ? " (" + matchResult.deviceType + ")" : ""), "success");
@@ -1779,6 +1806,9 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           "PPID": s.ppid || "",
           "Express kód": (s.codeKind === "PPID") ? "" : (serviceTagToExpress(s.serviceTag) || ""),
           "Eszköz típusa": s.deviceType || "",
+          "Kijelölt eszköztípus": s.selectedDeviceType || s.deviceType || "",
+          "Mesterlista eszköztípusa": s.masterDeviceType || "",
+          "Típuseltérés": s.typeMismatch ? "Igen" : "Nem",
           "Gyártó": s.vendor || "Dell",
           "Dátum": fmtTime(s.timestamp),
           "Beolvasó": s.scannedBy || "",
