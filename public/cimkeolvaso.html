@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
 <style>
@@ -438,6 +439,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       <input type="text" id="exportFilename" class="export-name" value="dell_service_tagek" maxlength="80" aria-label="Exportfájl neve, kiterjesztés nélkül" title="Exportfájl neve (kiterjesztés nélkül)">
       <button type="button" class="btn btn-primary" id="exportBtn">Exportálás Excelbe</button>
       <button type="button" class="btn btn-secondary" id="exportCsvBtn">CSV</button>
+      <button type="button" class="btn btn-secondary" id="backupBtn" title="Excel, GPS-adatok és mentett képek egy ZIP-fájlban">Teljes mentés (ZIP)</button>
     </div>
   </footer>
   <p class="foot-note">
@@ -511,6 +513,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     todayCount: document.getElementById("todayCount"),
     exportBtn: document.getElementById("exportBtn"),
     exportCsvBtn: document.getElementById("exportCsvBtn"),
+    backupBtn: document.getElementById("backupBtn"),
     exportFilename: document.getElementById("exportFilename"),
     masterToggle: document.getElementById("masterToggle"),
     masterBody: document.getElementById("masterBody"),
@@ -1853,6 +1856,52 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     saveCsv(exportBaseName() + ".csv", csv);
   });
 
+  // Hordozható készülékmentés: az adatok és a helyben tárolt bizonyítékfotók
+  // egy felhasználó által indított ZIP-letöltésben kerülnek a Letöltések mappába.
+  function safePhotoName(value){
+    return String(value || "azonosito").replace(/[^0-9A-Za-z_-]/g, "_").slice(0, 48) || "azonosito";
+  }
+  function backupWorkbookBytes(){
+    if (typeof XLSX === "undefined") return null;
+    var wb = XLSX.utils.book_new();
+    var ws = XLSX.utils.json_to_sheet(scanRowsForExport());
+    if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
+    XLSX.utils.book_append_sheet(wb, ws, "Beolvasások");
+    return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  }
+  el.backupBtn.addEventListener("click", function(){
+    if (!scans.length){ setStatus("Nincs menthető beolvasás.", "warn"); return; }
+    if (typeof JSZip === "undefined"){
+      setStatus("A teljes mentés összetevője nem töltődött be; ellenőrizd az internetkapcsolatot.", "error");
+      return;
+    }
+    el.backupBtn.disabled = true;
+    el.backupBtn.textContent = "Mentés készül…";
+    var zip = new JSZip();
+    var manifest = {
+      format: "Dell címkeolvasó teljes mentés",
+      createdAt: nowIso(),
+      scanCount: scans.length,
+      records: scans.map(function(scan, index){
+        var copy = {};
+        Object.keys(scan).forEach(function(key){ if (key !== "photo") copy[key] = scan[key]; });
+        copy.evidencePhotoFile = scan.photo ? "kepek/" + String(index + 1).padStart(3, "0") + "_" + safePhotoName(scan.serviceTag) + ".jpg" : "";
+        return copy;
+      })
+    };
+    zip.file("beolvasasok.json", JSON.stringify(manifest, null, 2));
+    var bytes = backupWorkbookBytes();
+    if (bytes) zip.file("beolvasasok.xlsx", bytes);
+    if (masterList) zip.file("mesterlista.json", JSON.stringify(masterList, null, 2));
+    scans.forEach(function(scan, index){
+      if (scan.photo) zip.file("kepek/" + String(index + 1).padStart(3, "0") + "_" + safePhotoName(scan.serviceTag) + ".jpg", scan.photo.split(",")[1] || "", { base64: true });
+    });
+    zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } })
+      .then(function(blob){ saveFile(exportBaseName() + "_teljes_mentes.zip", blob, "application/zip"); })
+      .catch(function(){ setStatus("A teljes mentés elkészítése nem sikerült.", "error"); })
+      .then(function(){ el.backupBtn.disabled = false; el.backupBtn.textContent = "Teljes mentés (ZIP)"; });
+  });
+
   // Korábbi verzió a MyDell QR teljes URL-jét mentette el service tag helyett — javítjuk.
   function migrateScans(){
     var changed = false;
@@ -1880,6 +1929,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   }
   if (typeof ZXing === "undefined") runtimeMessages.push("A kódolvasó komponens nem töltődött be; ellenőrizd az internetkapcsolatot.");
   if (typeof XLSX === "undefined") runtimeMessages.push("Az Excel import/export komponens nem töltődött be; a kamera és a helyi mentés ettől még használható.");
+  if (typeof JSZip === "undefined") runtimeMessages.push("A teljes ZIP-mentés összetevője nem töltődött be.");
   if (runtimeMessages.length) showRuntimeWarning(runtimeMessages.join(" "));
 
   window.addEventListener("pagehide", function(){ if (stream) stopCamera(); });
