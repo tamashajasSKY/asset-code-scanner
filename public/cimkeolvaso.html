@@ -348,7 +348,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   <div class="camera-card">
     <div class="camera-wrap" id="cameraWrap">
       <video id="video" playsinline muted></video>
-      <div class="camera-placeholder">A címkén lévő kód (Data Matrix vagy QR) beolvasásához menj <strong>közel, 10&ndash;15 cm&#8209;re</strong>. Élő beolvasás: &bdquo;Kamera indítása&rdquo;. Ha az nem indul el: &bdquo;Beolvasás fotóval&rdquo;.</div>
+      <div class="camera-placeholder">A címkén lévő kód (Data Matrix, QR vagy lineáris vonalkód) beolvasásához menj <strong>közel, 10&ndash;15 cm&#8209;re</strong>. Dokkolónál a <strong>SVC TAG</strong> melletti rövid vonalkódot célozd. Élő beolvasás: &bdquo;Kamera indítása&rdquo;. Ha az nem indul el: &bdquo;Beolvasás fotóval&rdquo;.</div>
       <div class="scan-frame" id="scanFrame">
         <span class="corner tl"></span><span class="corner tr"></span>
         <span class="corner bl"></span><span class="corner br"></span>
@@ -1354,12 +1354,39 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   }
 
   // Egy régió dekódolása, a megtalált kódok közül a legjobbat adja vissza (értelmezett formában).
-  function decodeRegion(source, sx, sy, sw, sh, targetW){
-    var data = grab(source, sx, sy, sw, sh, targetW);
-    if (!data) return null;
+  function rotatedImageData(imgData, clockwise){
+    var sw = imgData.width, sh = imgData.height;
+    var temp = document.createElement("canvas").getContext("2d");
+    var out = temp.createImageData(sh, sw);
+    var src = imgData.data, dst = out.data;
+    for (var y = 0; y < sh; y++) for (var x = 0; x < sw; x++){
+      var sourceAt = (y * sw + x) * 4;
+      var dx = clockwise ? sh - 1 - y : y;
+      var dy = clockwise ? x : sw - 1 - x;
+      var targetAt = (dy * sh + dx) * 4;
+      dst[targetAt] = src[sourceAt]; dst[targetAt + 1] = src[sourceAt + 1];
+      dst[targetAt + 2] = src[sourceAt + 2]; dst[targetAt + 3] = src[sourceAt + 3];
+    }
+    return out;
+  }
+
+  function bestFromImageData(data){
     var texts = zxDecodeAll(data);
     var best = null;
     for (var i = 0; i < texts.length; i++){ best = betterOf(best, parseCode(texts[i])); }
+    return best;
+  }
+
+  function decodeRegion(source, sx, sy, sw, sh, targetW, tryRotations){
+    var data = grab(source, sx, sy, sw, sh, targetW);
+    if (!data) return null;
+    var best = bestFromImageData(data);
+    // A dokkolók SVC TAG címkéjén gyakori a keskeny, elforgatott Code 128 vonalkód.
+    // Ezt a ZXing csak a megfelelő tájolásban tudja megbízhatóan kiolvasni.
+    if (tryRotations && (!best || best.rank < 3)){
+      best = betterOf(best, bestFromImageData(rotatedImageData(data, true)));
+      if (!best || best.rank < 3) best = betterOf(best, bestFromImageData(rotatedImageData(data, false)));
+    }
     return best;
   }
 
@@ -1433,7 +1460,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         if (i >= cands.length || grace === 0) return resolve(best);
         var c = cands[i++];
         if (onProgress) onProgress(i, cands.length);
-        var hit = decodeRegion(c.src, c.sx, c.sy, c.sw, c.sh, c.t);
+        var hit = decodeRegion(c.src, c.sx, c.sy, c.sw, c.sh, c.t, c.rotate === true);
         if (hit){
           best = betterOf(best, hit);
           if (best && best.rank >= 3) return resolve(best);
@@ -1462,6 +1489,14 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         sy: Math.max(0, Math.min(H - sh, H * p[1] - sh / 2)),
         sw: sw, sh: sh, t: 1200
       });
+    });
+    // A dokkoló címkéjén a Service Tag többnyire rövid, lineáris vonalkódban van.
+    // Vízszintes és függőleges sávokat is vizsgálunk, a függőlegeset elforgatva is.
+    [0.25, 0.5, 0.75].forEach(function(center){
+      var bandH = H * 0.30;
+      out.push({ src: img, sx: 0, sy: Math.max(0, Math.min(H - bandH, H * center - bandH / 2)), sw: W, sh: bandH, t: 1500, rotate: true });
+      var bandW = W * 0.30;
+      out.push({ src: img, sx: Math.max(0, Math.min(W - bandW, W * center - bandW / 2)), sy: 0, sw: bandW, sh: H, t: 1500, rotate: true });
     });
     return out;
   }
