@@ -328,6 +328,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 .foot-note{ font-size:11.5px; color:var(--ink-faint); text-align:center; margin-top:14px; }
 .export-actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 .export-actions .btn{ min-height:40px; padding:9px 14px; font-size:13.5px; }
+.btn-danger{ background:var(--bad-bg); color:var(--bad); border:1px solid rgba(185,28,28,.28); }
+.btn-danger:hover{ background:#fee2e2; }
+.clear-dialog .dialog-card{ border:1px solid rgba(185,28,28,.35); }
+.clear-dialog .danger-copy{ margin:0; color:var(--ink-muted); font-size:14px; line-height:1.45; }
 .export-actions .export-name{ width:175px; min-height:40px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:13px 'IBM Plex Mono',monospace; }
 .runtime-warning{
   display:none; margin-bottom:14px; padding:10px 12px; border-radius:9px;
@@ -478,6 +482,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       <button type="button" class="btn btn-primary" id="exportBtn">Exportálás Excelbe</button>
       <button type="button" class="btn btn-secondary" id="exportCsvBtn">CSV</button>
       <button type="button" class="btn btn-secondary" id="backupBtn" title="Excel, GPS-adatok és mentett képek egy ZIP-fájlban">Teljes mentés (ZIP)</button>
+      <button type="button" class="btn btn-danger" id="clearScansBtn" title="Csak a telefon böngészőjében tárolt beolvasások törlése">Beolvasások törlése</button>
     </div>
   </footer>
   <p class="foot-note">
@@ -494,6 +499,14 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       <label for="editNote">Megjegyzés</label><textarea id="editNote"></textarea>
       <p class="field-hint">Mentéskor a mesterlista szerinti egyezés és típuseltérés ismét ellenőrződik.</p>
       <div class="dialog-actions"><button type="button" class="btn btn-secondary" id="editCancel">Mégse</button><button type="button" class="btn btn-primary" id="editSave">Mentés</button></div>
+    </div>
+  </div>
+  <div class="edit-dialog clear-dialog" id="clearDialog" role="dialog" aria-modal="true" aria-labelledby="clearTitle">
+    <div class="dialog-card">
+      <h2 id="clearTitle">Összes beolvasás törlése?</h2>
+      <p class="danger-copy">Ez a művelet a telefon böngészőjében tárolt összes beolvasást és hozzájuk kapcsolt fényképet törli. A mesterlista nem törlődik. A folytatáshoz írd be: <strong>TÖRLÉS</strong></p>
+      <label for="clearConfirmInput">Megerősítés</label><input id="clearConfirmInput" autocomplete="off" autocapitalize="characters" placeholder="TÖRLÉS">
+      <div class="dialog-actions"><button type="button" class="btn btn-secondary" id="clearCancel">Mégse</button><button type="button" class="btn btn-danger" id="clearConfirmBtn" disabled>Törlés véglegesen</button></div>
     </div>
   </div>
 
@@ -574,6 +587,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     exportBtn: document.getElementById("exportBtn"),
     exportCsvBtn: document.getElementById("exportCsvBtn"),
     backupBtn: document.getElementById("backupBtn"),
+    clearScansBtn: document.getElementById("clearScansBtn"),
     exportFilename: document.getElementById("exportFilename"),
     masterToggle: document.getElementById("masterToggle"),
     masterBody: document.getElementById("masterBody"),
@@ -596,7 +610,11 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     editScanner: document.getElementById("editScanner"),
     editNote: document.getElementById("editNote"),
     editCancel: document.getElementById("editCancel"),
-    editSave: document.getElementById("editSave")
+    editSave: document.getElementById("editSave"),
+    clearDialog: document.getElementById("clearDialog"),
+    clearConfirmInput: document.getElementById("clearConfirmInput"),
+    clearCancel: document.getElementById("clearCancel"),
+    clearConfirmBtn: document.getElementById("clearConfirmBtn")
   };
 
   // ---------- utils ----------
@@ -1072,6 +1090,30 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     renderList();
     persist();
   }
+
+  // Készülék-helyi takarítás: a mesterlista érintetlen marad.
+  // Közös nézetben sem írunk üres listát a megosztott tárolóba.
+  function openClearDialog(){
+    if (!scans.length){ setStatus("Nincs törölhető beolvasás ezen a készüléken.", "warn"); return; }
+    el.clearConfirmInput.value = "";
+    el.clearConfirmBtn.disabled = true;
+    el.clearDialog.classList.add("open");
+    setTimeout(function(){ el.clearConfirmInput.focus(); }, 0);
+  }
+  function closeClearDialog(){ el.clearDialog.classList.remove("open"); }
+  function clearLocalScans(){
+    scans = [];
+    try{ localStorage.removeItem("cimkeolvaso_scans"); }catch(e){}
+    renderList();
+    closeClearDialog();
+    setStatus(sharedMode ? "A készülék helyi beolvasásai törölve. A közös lista nem módosult." : "A készüléken tárolt beolvasások és fényképek törölve.", "success");
+  }
+  el.clearScansBtn.addEventListener("click", openClearDialog);
+  el.clearCancel.addEventListener("click", closeClearDialog);
+  el.clearDialog.addEventListener("click", function(e){ if (e.target === el.clearDialog) closeClearDialog(); });
+  el.clearConfirmInput.addEventListener("input", function(){ el.clearConfirmBtn.disabled = String(el.clearConfirmInput.value || "").trim().toLocaleUpperCase("hu-HU") !== "TÖRLÉS"; });
+  el.clearConfirmInput.addEventListener("keydown", function(e){ if (e.key === "Enter" && !el.clearConfirmBtn.disabled) clearLocalScans(); });
+  el.clearConfirmBtn.addEventListener("click", clearLocalScans);
 
   // ---------- device type segmented control ----------
   el.deviceTypeGroup.addEventListener("click", function(e){
