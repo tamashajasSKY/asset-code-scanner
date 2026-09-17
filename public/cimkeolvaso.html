@@ -1503,21 +1503,30 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     try{ sources.push(base.invert()); }catch(e){}
 
     for (var k = 0; k < sources.length; k++){
-      try{
-        var res = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(sources[k])));
-        if (res && res.getText) out.push(res.getText());
-      }catch(e2){}
-      try{ reader.reset(); }catch(e3){}
+      // A GlobalHistogramBinarizer különösen a tiszta, lineáris Code 128 sávokra hasznos;
+      // a HybridBinarizer pedig az árnyékos/egyenetlen dokkolócímkékre jobb.
+      var bins = [ZXing.HybridBinarizer, ZXing.GlobalHistogramBinarizer].filter(Boolean);
+      for (var b = 0; b < bins.length; b++){
+        try{
+          var res = reader.decode(new ZXing.BinaryBitmap(new bins[b](sources[k])));
+          if (res && res.getText) out.push(res.getText());
+        }catch(e2){}
+        try{ reader.reset(); }catch(e3){}
+      }
     }
     return out;
   }
 
   function grab(source, sx, sy, sw, sh, targetW){
     if (sw < 8 || sh < 8) return null;
-    var scale = targetW ? Math.min(1, targetW / sw) : 1;
+    // A keskeny, álló dokkoló-vonalkódot nem szabad a szélességéhez igazítva
+    // óriásira nagyítani: ettől a feldolgozás belassul, és a következő élő képkocka elkésik.
+    var longSide = Math.max(sw, sh), shortSide = Math.min(sw, sh);
+    var scale = targetW ? Math.min(1, targetW / longSide) : 1;
+    if (shortSide * scale < 180) scale = Math.max(scale, Math.min(3, 180 / shortSide));
+    if (longSide * scale > 2048) scale = 2048 / longSide;
     var w = Math.max(1, Math.round(sw * scale));
     var h = Math.max(1, Math.round(sh * scale));
-    if (w < 480){ var f = 480 / w; w = Math.round(w * f); h = Math.round(h * f); }
     canvas.width = w; canvas.height = h;
     ctx.imageSmoothingEnabled = true;
     try{
@@ -1722,6 +1731,33 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     }).catch(function(){ return null; });
   }
 
+  // A Chrome saját olvasója sok telefonon gyorsabb Code 128-nál, de a teljes
+  // kameraképen a dokkoló keskeny címkéje túl kicsi. Kivágott és elforgatott
+  // vásznon is megpróbáljuk, mielőtt a ZXingre esünk vissza.
+  function nativeDetectRegion(source, sx, sy, sw, sh, rotate){
+    return initNativeDetector().then(function(det){
+      if (!det) return null;
+      var longSide = Math.max(sw, sh), scale = Math.min(3, Math.max(1, 1500 / longSide));
+      if (longSide * scale > 2048) scale = 2048 / longSide;
+      var w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+      var c = document.createElement("canvas"), cctx = c.getContext("2d");
+      try{
+        if (rotate){
+          c.width = h; c.height = w;
+          cctx.translate(c.width / 2, c.height / 2); cctx.rotate(Math.PI / 2);
+          cctx.drawImage(source, sx, sy, sw, sh, -w / 2, -h / 2, w, h);
+        } else {
+          c.width = w; c.height = h; cctx.drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
+        }
+      }catch(e){ return null; }
+      return det.detect(c).then(function(codes){
+        var best = null;
+        if (codes) for (var i = 0; i < codes.length; i++) if (codes[i].rawValue) best = betterOf(best, parseCode(codes[i].rawValue));
+        return best;
+      }).catch(function(){ return null; });
+    }).catch(function(){ return null; });
+  }
+
   // ---------- fotós mód ----------
   var reviewImgEl = null;
   var reviewState = { x: 0.5, y: 0.5, size: 0.38, rotation: 0, zoom: 1 };
@@ -1910,7 +1946,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         acceptParsed(r.hit, photo, r.loaded.photoLocation);
       } else {
         openReview(r.loaded);
-        setStatus("Koppints a képen a kódra, és megpróbálom onnan.", "warn");
+        setStatus("Húzd a zöld kört a vonalkódra, majd válaszd a „Kijelölt kör beolvasása” gombot.", "warn");
       }
     }).catch(function(){
       setStatus("A kép feldolgozása nem sikerült.", "error");
@@ -1946,8 +1982,9 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     var relX = ev.clientX - rect.left;
     var relY = ev.clientY - rect.top;
     if (relX < 0 || relY < 0 || relX > rect.width || relY > rect.height) return;
-    var p = rotatePointToOriginal(relX / rect.width, relY / rect.height);
-    reviewState.x = p.x; reviewState.y = p.y; updateReviewSelection();
+    // A kör mindig a képernyőn látható irányok szerint mozog. Az eredeti képre
+    // történő visszaforgatás csak a tényleges dekódolás pillanatában történik.
+    reviewState.x = relX / rect.width; reviewState.y = relY / rect.height; updateReviewSelection();
   }
   function decodeReviewSelection(){
     if (!reviewImgEl) return;
@@ -2037,10 +2074,11 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           }
           // A natív detektor megléte nem jelenti, hogy minden Dell Data Matrix kódot
           // felismer. Sikertelen találatnál ugyanazon a képkockán ZXinggel is próbálkozunk.
-          if (best) onLiveHit(best); else onLiveHit(decodeLiveFallback(vw, vh));
+          if (best) onLiveHit(best);
+          else nativeLiveFallback(vw, vh).then(onLiveHit).catch(function(){ onLiveHit(decodeLiveFallback(vw, vh)); });
         })
         .catch(function(){
-          onLiveHit(decodeLiveFallback(vw, vh));
+          nativeLiveFallback(vw, vh).then(onLiveHit).catch(function(){ onLiveHit(decodeLiveFallback(vw, vh)); });
         });
       return;
     }
@@ -2048,17 +2086,27 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     onLiveHit(decodeLiveFallback(vw, vh));
   }
 
-  function decodeLiveFallback(vw, vh){
+  function nextLiveRegion(vw, vh){
     // A Data Matrix a középső négyzetben a legjobb, a dokkoló SVC TAG-je viszont keskeny Code 128.
     // Három ciklusban váltjuk a négyzetet és a két, elforgatva is vizsgált hosszú sávot.
     var mode = (liveCycle++ % 3), side = Math.min(vw, vh) * 0.76;
-    if (mode === 0) return decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 900, true);
+    if (mode === 0) return { sx:(vw - side) / 2, sy:(vh - side) / 2, sw:side, sh:side, target:900, rotate:true };
     if (mode === 1){
       var bandH = Math.max(90, vh * 0.34);
-      return decodeRegion(el.video, vw * 0.08, (vh - bandH) / 2, vw * 0.84, bandH, 1500, true);
+      return { sx:vw * 0.08, sy:(vh - bandH) / 2, sw:vw * 0.84, sh:bandH, target:1500, rotate:true };
     }
     var bandW = Math.max(90, vw * 0.34);
-    return decodeRegion(el.video, (vw - bandW) / 2, vh * 0.08, bandW, vh * 0.84, 1500, true);
+    return { sx:(vw - bandW) / 2, sy:vh * 0.08, sw:bandW, sh:vh * 0.84, target:1500, rotate:true };
+  }
+  function decodeLiveFallback(vw, vh){
+    var r = nextLiveRegion(vw, vh);
+    return decodeRegion(el.video, r.sx, r.sy, r.sw, r.sh, r.target, r.rotate);
+  }
+  function nativeLiveFallback(vw, vh){
+    var r = nextLiveRegion(vw, vh);
+    return nativeDetectRegion(el.video, r.sx, r.sy, r.sw, r.sh, r.rotate).then(function(hit){
+      return hit || decodeRegion(el.video, r.sx, r.sy, r.sw, r.sh, r.target, r.rotate);
+    });
   }
 
   // ---------- export ----------
