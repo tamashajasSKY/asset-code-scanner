@@ -115,25 +115,34 @@ A letöltött fájlok általában a telefon `Letöltések / Downloads` mappájá
 
 ## Helyi futtatás
 
-A projekt Node.js-alapú fejlesztői környezetet használ.
+A címkeolvasó kliensoldali alkalmazás, ezért a használatához telefonon vagy az éles weboldalon nem szükséges Node.js. A Node.js csak a forráskód helyi fejlesztéséhez és a kiadási build elkészítéséhez kell.
 
-A szükséges csomagok telepítése:
+### Előfeltételek
+
+- Node.js `22.13.0` vagy újabb
+- Corepack
+- pnpm, a projekthez tartozó `pnpm-lock.yaml` alapján
+
+A pnpm engedélyezése és a rögzített függőségek telepítése:
 
 ```bash
-npm install
+corepack enable
+pnpm install --frozen-lockfile
 ```
 
 Fejlesztői környezet indítása:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-Kiadási változat elkészítése:
+Kiadási build elkészítése és ellenőrzése:
 
 ```bash
-npm run build
+pnpm build
 ```
+
+A build eredménye a generált `dist` könyvtárba kerül. A `node_modules`, `dist` és egyéb generált állományok nem kerülnek be a Git repository-ba.
 
 ## Felhasznált technológiák
 
