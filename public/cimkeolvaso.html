@@ -165,6 +165,18 @@ h1,h2,h3,button,.mono{
   display:flex; align-items:center; justify-content:center; cursor:crosshair;
 }
 .review-imgwrap img{ display:block; max-width:100%; max-height:52vh; }
+.review-tools{ display:grid; grid-template-columns:repeat(3, 1fr); gap:7px; }
+.review-tools .btn{ min-height:40px; padding:8px; font-size:13px; }
+.review-range{ display:flex; align-items:center; gap:9px; font-size:13px; color:var(--ink-muted); }
+.review-range input{ flex:1; accent-color:var(--accent); }
+.review-selection{
+  position:absolute; width:38%; aspect-ratio:1; border:3px solid var(--good); border-radius:50%;
+  box-shadow:0 0 0 200vmax rgba(0,0,0,.18), 0 0 0 2px rgba(0,0,0,.35); display:none;
+  transform:translate(-50%,-50%); touch-action:none; cursor:grab;
+}
+.review-selection.show{ display:block; }
+.review-selection:after{ content:"Húzd a kódra"; position:absolute; left:50%; top:calc(100% + 5px); transform:translateX(-50%); white-space:nowrap; color:#fff; background:rgba(0,0,0,.65); padding:3px 6px; border-radius:5px; font:12px 'Source Sans 3',sans-serif; }
+.review-imgwrap.editing img{ transform-origin:center center; }
 .review-marker{
   position:absolute; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%;
   border:3px solid var(--good); box-shadow:0 0 0 2px rgba(0,0,0,.35); display:none; pointer-events:none;
@@ -280,6 +292,8 @@ h1,h2,h3,button,.mono{
   width:42px; height:42px; object-fit:cover; border-radius:7px; border:1px solid var(--border);
   background:var(--surface-2); cursor:zoom-in; flex:0 0 auto;
 }
+.manual-body .manual-photo-btn{ background:var(--surface-2); color:var(--ink); border:1px solid var(--border); }
+.manual-photo-state{ margin:0; font-size:12px; color:var(--ink-muted); grid-column:1 / -1; }
 .storage-note{
   margin:10px 14px 0; padding:9px 11px; border:1px solid var(--border); border-radius:8px;
   background:var(--surface-2); color:var(--ink-muted); font-size:12px; line-height:1.45;
@@ -290,6 +304,18 @@ h1,h2,h3,button,.mono{
   padding:6px; line-height:1; border-radius:6px;
 }
 .scan-row .del:hover{ color:var(--bad); background:var(--bad-bg); }
+.scan-row .edit{ background:none; border:none; color:var(--accent); font-size:17px; cursor:pointer; padding:6px; line-height:1; border-radius:6px; }
+.scan-row .edit:hover{ background:var(--surface-2); }
+.scan-row .warranty{ background:none; border:none; color:var(--ink-muted); font-size:16px; cursor:pointer; padding:6px; line-height:1; border-radius:6px; }
+.scan-row .warranty:hover{ color:var(--accent); background:var(--surface-2); }
+.edit-dialog{ position:fixed; inset:0; z-index:20; background:rgba(8,12,16,.62); padding:18px; display:none; align-items:flex-end; }
+.edit-dialog.open{ display:flex; }
+.edit-dialog .dialog-card{ width:min(100%, 520px); margin:auto; background:var(--surface); border-radius:14px; padding:18px; box-shadow:0 14px 44px rgba(0,0,0,.28); display:flex; flex-direction:column; gap:10px; }
+.edit-dialog h2{ font-size:18px; margin:0 0 2px; }
+.edit-dialog label{ font-size:13px; font-weight:600; color:var(--ink-muted); }
+.edit-dialog input,.edit-dialog select,.edit-dialog textarea{ width:100%; border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--ink); background:var(--bg); font:15px 'Source Sans 3',sans-serif; }
+.edit-dialog textarea{ min-height:62px; resize:vertical; }
+.dialog-actions{ display:flex; gap:8px; margin-top:4px; }.dialog-actions .btn{ flex:1; }
 .empty-state{
   text-align:center; color:var(--ink-faint); font-size:13.5px; padding:28px 10px;
   border:1px dashed var(--border); border-radius:var(--radius);
@@ -363,11 +389,19 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       <div class="status-line" id="statusLine" role="status" aria-live="polite">&nbsp;</div>
     </div>
     <div class="photo-review" id="photoReview">
-      <p class="review-hint" id="reviewHint">Koppints a képen közvetlenül a kódra.</p>
+      <p class="review-hint" id="reviewHint">Állítsd be a kód körüli kört, majd indítsd a célzott beolvasást.</p>
       <div class="review-imgwrap" id="reviewWrap">
         <img id="reviewImg" alt="A készített fotó">
         <span class="review-marker" id="reviewMarker"></span>
+        <span class="review-selection" id="reviewSelection" aria-hidden="true"></span>
       </div>
+      <div class="review-tools" aria-label="Fénykép beállításai">
+        <button type="button" class="btn btn-secondary" id="reviewRotateLeft">↶ Forgatás</button>
+        <button type="button" class="btn btn-secondary" id="reviewZoomOut">− Kicsinyítés</button>
+        <button type="button" class="btn btn-secondary" id="reviewZoomIn">+ Nagyítás</button>
+      </div>
+      <label class="review-range" for="reviewSize">Beolvasási kör mérete <input type="range" id="reviewSize" min="12" max="85" value="38"><span id="reviewSizeValue">38%</span></label>
+      <button type="button" class="btn btn-primary" id="reviewDecode">Kijelölt kör beolvasása</button>
       <button type="button" class="btn btn-secondary" id="reviewCancel">Bezárás</button>
     </div>
     <p class="storage-note"><strong>Helyi tárolás:</strong> a beolvasások és a hozzájuk kapcsolt fényképek ezen a készüléken, a böngésző helyi tárhelyén maradnak. A letöltött Excel- és CSV-fájlok a telefon <strong>Letöltések / Downloads</strong> mappájába kerülnek. A böngésző helyi tárhelye nem rendelkezik külön, megnyitható mappaelérési úttal.</p>
@@ -388,7 +422,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     <button type="button" class="manual-toggle" id="manualToggle"><span class="chevron">&#9656;</span> Sérült címke &ndash; kézi rögzítés</button>
     <div class="manual-body" id="manualBody">
       <input type="text" id="manualInput" placeholder="7 karakteres Service Tag vagy Express kód" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <button type="button" class="manual-photo-btn" id="manualPhotoBtn">Fénykép</button>
       <button type="button" id="manualSave">Rögzítés</button>
+      <input type="file" id="manualPhotoInput" accept="image/*" capture="environment" style="display:none">
+      <p class="manual-photo-state" id="manualPhotoState">Fénykép nincs csatolva.</p>
     </div>
   </div>
 
@@ -417,6 +454,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           <span class="progress-text" id="masterProgressText">0 / 0</span>
         </div>
         <div class="master-actions">
+          <button type="button" class="btn btn-secondary" id="masterRecheck">Beolvasások újraellenőrzése</button>
           <button type="button" class="btn btn-secondary" id="masterExport">Frissített lista (XLSX)</button>
           <button type="button" class="btn btn-secondary" id="masterExportCsv">CSV</button>
           <button type="button" class="btn btn-secondary" id="masterReset">Másik fájl</button>
@@ -446,6 +484,18 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     Data Matrix, QR és vonalkód olvasás &mdash; a feldolgozás a telefonodon történik.
     <a href="#" id="galleryLink" style="color:var(--accent);">Meglévő kép beolvasása</a>
   </p>
+
+  <div class="edit-dialog" id="editDialog" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="dialog-card">
+      <h2 id="editTitle">Beolvasás módosítása</h2>
+      <label for="editTag">Azonosító / Service Tag</label><input id="editTag" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <label for="editType">Eszköz típusa</label><select id="editType"><option>Monitor</option><option>Dokkoló</option><option>Laptop</option><option>Egyéb</option></select>
+      <label for="editScanner">Beolvasó</label><input id="editScanner">
+      <label for="editNote">Megjegyzés</label><textarea id="editNote"></textarea>
+      <p class="field-hint">Mentéskor a mesterlista szerinti egyezés és típuseltérés ismét ellenőrződik.</p>
+      <div class="dialog-actions"><button type="button" class="btn btn-secondary" id="editCancel">Mégse</button><button type="button" class="btn btn-primary" id="editSave">Mentés</button></div>
+    </div>
+  </div>
 
 </div>
 
@@ -496,6 +546,13 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     reviewWrap: document.getElementById("reviewWrap"),
     reviewImg: document.getElementById("reviewImg"),
     reviewMarker: document.getElementById("reviewMarker"),
+    reviewSelection: document.getElementById("reviewSelection"),
+    reviewRotateLeft: document.getElementById("reviewRotateLeft"),
+    reviewZoomOut: document.getElementById("reviewZoomOut"),
+    reviewZoomIn: document.getElementById("reviewZoomIn"),
+    reviewSize: document.getElementById("reviewSize"),
+    reviewSizeValue: document.getElementById("reviewSizeValue"),
+    reviewDecode: document.getElementById("reviewDecode"),
     reviewCancel: document.getElementById("reviewCancel"),
     ppidPanel: document.getElementById("ppidPanel"),
     ppidValue: document.getElementById("ppidValue"),
@@ -507,6 +564,9 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     manualToggle: document.getElementById("manualToggle"),
     manualBody: document.getElementById("manualBody"),
     manualInput: document.getElementById("manualInput"),
+    manualPhotoBtn: document.getElementById("manualPhotoBtn"),
+    manualPhotoInput: document.getElementById("manualPhotoInput"),
+    manualPhotoState: document.getElementById("manualPhotoState"),
     manualSave: document.getElementById("manualSave"),
     scanList: document.getElementById("scanList"),
     listCount: document.getElementById("listCount"),
@@ -528,7 +588,15 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     masterProgressText: document.getElementById("masterProgressText"),
     masterExport: document.getElementById("masterExport"),
     masterExportCsv: document.getElementById("masterExportCsv"),
-    masterReset: document.getElementById("masterReset")
+    masterReset: document.getElementById("masterReset"),
+    masterRecheck: document.getElementById("masterRecheck"),
+    editDialog: document.getElementById("editDialog"),
+    editTag: document.getElementById("editTag"),
+    editType: document.getElementById("editType"),
+    editScanner: document.getElementById("editScanner"),
+    editNote: document.getElementById("editNote"),
+    editCancel: document.getElementById("editCancel"),
+    editSave: document.getElementById("editSave")
   };
 
   // ---------- utils ----------
@@ -738,23 +806,29 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     };
   }
 
-  function checkMasterList(tag){
+  function inspectMasterList(tag){
     if (!masterList || !masterList.rows || !masterList.rows.length) return null;
     var norm = tag.trim().toLowerCase();
     var row = masterList.rows.find(function(r){
       return String(r[masterList.tagColumn] || "").trim().toLowerCase() === norm;
     });
     if (!row) return { found: false };
-    var alreadyVerified = row.__verified === "Igen";
-    row.__verified = "Igen";
-    row.__verifiedDate = nowIso();
-    persistMaster();
-    renderMaster();
     var typeFromList = null;
     if (masterList.typeColumn && row[masterList.typeColumn]){
       typeFromList = String(row[masterList.typeColumn]).trim() || null;
     }
-    return { found: true, alreadyVerified: alreadyVerified, row: row, deviceType: typeFromList };
+    return { found: true, alreadyVerified: row.__verified === "Igen", row: row, deviceType: typeFromList };
+  }
+
+  function checkMasterList(tag){
+    var result = inspectMasterList(tag);
+    if (!result || !result.found) return result;
+    result.alreadyVerified = result.row.__verified === "Igen";
+    result.row.__verified = "Igen";
+    result.row.__verifiedDate = nowIso();
+    persistMaster();
+    renderMaster();
+    return result;
   }
 
   function normalizeDeviceType(value){
@@ -825,6 +899,8 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
             kindBadge +
             matchBadge +
             "<span class=\"badge" + (s.source === "Kézi" ? " manual" : "") + "\">" + escapeHtml(s.source) + "</span>" +
+            (s.vendor === "Dell" && s.codeKind !== "PPID" ? "<button type=\"button\" class=\"warranty\" data-id=\"" + escapeHtml(s.id) + "\" title=\"Dell garancia ellenőrzése\">&#128737;</button>" : "") +
+            "<button type=\"button\" class=\"edit\" data-id=\"" + escapeHtml(s.id) + "\" title=\"Adatok módosítása\">&#9998;</button>" +
             "<button type=\"button\" class=\"del\" data-id=\"" + escapeHtml(s.id) + "\" title=\"Törlés\">&#128465;</button>" +
           "</div>"
         );
@@ -1027,8 +1103,9 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       setStatus("Adj meg egy 7 karakteres Service Tag-et vagy egy 8–13 jegyű Express SVC Code-ot.", "warn");
       return;
     }
-    addScan(r.tag, "Kézi", { kind: "Service tag", note: r.from === "Express kód" ? "Express kódból" : "" });
+    addScan(r.tag, "Kézi", { kind: "Service tag", note: r.from === "Express kód" ? "Express kódból" : "", photo: manualPhoto ? manualPhoto.photo : "", photoLocation: manualPhoto ? manualPhoto.location : null });
     el.manualInput.value = "";
+    manualPhoto = null; el.manualPhotoState.textContent = "Fénykép nincs csatolva.";
   });
   el.manualInput.addEventListener("keydown", function(e){
     if (e.key === "Enter") el.manualSave.click();
@@ -1139,7 +1216,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         selectMasterSheet(preferred);
         el.masterColumnPicker.style.display = "flex";
         el.masterStats.style.display = "none";
-        el.masterSummary.textContent = rows.length + " sor beolvasva";
+        el.masterSummary.textContent = pendingMaster.rows.length + " sor beolvasva";
         if (!el.masterBody.classList.contains("open")){
           el.masterBody.classList.add("open");
           el.masterToggle.classList.add("open");
@@ -1182,6 +1259,18 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     el.masterFile.value = "";
     setStatus("Mesterlista törölve. Tölts fel egy új fájlt.", "warn");
   });
+  el.manualPhotoBtn.addEventListener("click", function(){ el.manualPhotoInput.click(); });
+  el.manualPhotoInput.addEventListener("change", function(e){
+    var file = e.target.files && e.target.files[0]; e.target.value = "";
+    if (!file) return;
+    el.manualPhotoState.textContent = "Fénykép feldolgozása…";
+    Promise.all([loadImageFromFile(file), readExifGps(file)]).then(function(result){
+      manualPhoto = { photo: captureEvidenceImage(result[0].img), location: result[1] || null };
+      URL.revokeObjectURL(result[0].url);
+      el.manualPhotoState.textContent = manualPhoto.photo ? "Fénykép csatolva" + (manualPhoto.location ? " (GPS-adattal)." : ".") : "A fénykép nem menthető ezen a készüléken.";
+    }).catch(function(){ el.manualPhotoState.textContent = "A fénykép feldolgozása nem sikerült."; });
+  });
+  el.masterRecheck.addEventListener("click", refreshAllMasterChecks);
 
   function masterRowsForExport(){
     if (!masterList || !masterList.rows.length) return null;
@@ -1227,11 +1316,53 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     saveCsv("mesterlista_frissitve.csv", csv);
   });
 
-  // ---------- list delete ----------
+  // ---------- list actions ----------
   el.scanList.addEventListener("click", function(e){
     var btn = e.target.closest("button.del");
-    if (!btn) return;
-    removeScan(btn.getAttribute("data-id"));
+    if (btn){ removeScan(btn.getAttribute("data-id")); return; }
+    var warranty = e.target.closest("button.warranty");
+    if (warranty){
+      var warrantyScan = scans.find(function(s){ return s.id === warranty.getAttribute("data-id"); });
+      if (warrantyScan) openDellSupport(warrantyScan.serviceTag);
+      return;
+    }
+    var edit = e.target.closest("button.edit");
+    if (edit) openEditDialog(edit.getAttribute("data-id"));
+  });
+
+  var editingScanId = null;
+  function openDellSupport(tag){
+    var clean = String(tag || "").trim().toUpperCase();
+    if (!/^[0-9A-Z]{7}$/.test(clean) || /^\d{7}$/.test(clean)){ setStatus("Ehhez az azonosítóhoz nem nyitható Dell garanciaoldal.", "warn"); return; }
+    window.open("https://www.dell.com/support/home/hu-hu/product-support/servicetag/" + encodeURIComponent(clean) + "/overview", "_blank", "noopener");
+    setStatus("Megnyitottam a Dell támogatási oldalt. A garancia aktuális állapotát ott, Dell bejelentkezés mellett ellenőrizheted.", "success");
+  }
+  function openEditDialog(id){
+    var s = scans.find(function(x){ return x.id === id; });
+    if (!s) return;
+    editingScanId = id;
+    el.editTag.value = s.serviceTag || ""; el.editType.value = s.selectedDeviceType || s.deviceType || "Egyéb";
+    el.editScanner.value = s.scannedBy || ""; el.editNote.value = s.note || "";
+    el.editDialog.classList.add("open"); setTimeout(function(){ el.editTag.focus(); }, 0);
+  }
+  function closeEditDialog(){ editingScanId = null; el.editDialog.classList.remove("open"); }
+  el.editCancel.addEventListener("click", closeEditDialog);
+  el.editDialog.addEventListener("click", function(e){ if (e.target === el.editDialog) closeEditDialog(); });
+  el.editSave.addEventListener("click", function(){
+    var s = scans.find(function(x){ return x.id === editingScanId; });
+    if (!s) return;
+    var raw = String(el.editTag.value || "").trim().toUpperCase();
+    var isGeneric = s.vendor === "Nem Dell" || s.codeKind === "Egyéb vonalkód";
+    if (!raw || (!isGeneric && (!/^[0-9A-Z]{7}$/.test(raw) || /^\d{7}$/.test(raw)))){ setStatus("Adj meg érvényes 7 karakteres Dell Service Tag-et.", "warn"); return; }
+    var duplicate = scans.some(function(x){ return x.id !== s.id && String(x.serviceTag || "").toUpperCase() === raw; });
+    if (duplicate){ setStatus("Ez az azonosító már szerepel a beolvasások között.", "warn"); return; }
+    s.serviceTag = raw; s.selectedDeviceType = el.editType.value; s.scannedBy = String(el.editScanner.value || "").trim() || "Ismeretlen"; s.note = String(el.editNote.value || "").trim();
+    var r = isGeneric ? null : inspectMasterList(raw);
+    s.masterMatch = r ? r.found : null; s.masterDeviceType = r && r.deviceType ? r.deviceType : "";
+    s.typeMismatch = !!(r && r.found && hasTypeMismatch(s.selectedDeviceType, s.masterDeviceType));
+    s.deviceType = s.masterDeviceType || s.selectedDeviceType;
+    persist(); renderList(); closeEditDialog();
+    setStatus(s.typeMismatch ? "Mentve. ⚠ A mesterlista szerinti eszköztípus eltér a kijelölttől." : "A beolvasás adatai és mesterlista-ellenőrzése frissítve.", s.typeMismatch ? "warn" : "success");
   });
 
   // ---------- camera / scanning ----------
@@ -1241,7 +1372,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       return;
     }
     setStatus("Kamera indítása…");
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
       .then(function(s){
         stream = s;
         track = s.getVideoTracks()[0];
@@ -1249,9 +1380,9 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         el.video.play();
         el.cameraWrap.classList.add("active");
         el.cameraToggle.textContent = "Kamera leállítása";
-        setStatus("Tartsd a telefont közel (10–15 cm) a kódhoz.");
+        setStatus("Tartsd a telefont közel (10–15 cm) a kódhoz. Dokkolónál a SVC TAG vonalkód töltse ki a zöld keret nagy részét.");
         setupTorch();
-        scanTimer = setInterval(scanFrame, 250);
+        scanTimer = setInterval(scanFrame, 350);
       })
       .catch(function(err){
         var name = err && err.name;
@@ -1368,6 +1499,20 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       dst[targetAt + 2] = src[sourceAt + 2]; dst[targetAt + 3] = src[sourceAt + 3];
     }
     return out;
+  }
+
+  function refreshAllMasterChecks(){
+    if (!masterList || !masterList.rows || !masterList.rows.length){ setStatus("Előbb tölts be egy mesterlistát.", "warn"); return; }
+    scans.forEach(function(s){
+      if (s.vendor === "Nem Dell" || s.codeKind === "Egyéb vonalkód") return;
+      var r = inspectMasterList(s.serviceTag);
+      s.masterMatch = r ? r.found : null;
+      s.masterDeviceType = r && r.deviceType ? r.deviceType : "";
+      s.typeMismatch = !!(r && r.found && hasTypeMismatch(s.selectedDeviceType || s.deviceType, s.masterDeviceType));
+      if (r && r.deviceType) s.deviceType = r.deviceType;
+    });
+    persist(); renderList();
+    setStatus("A beolvasások mesterlista-ellenőrzése frissítve. A típusfigyelmeztetés a lista sorának adata alapján készül.", "success");
   }
 
   function bestFromImageData(data){
@@ -1537,6 +1682,25 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 
   // ---------- fotós mód ----------
   var reviewImgEl = null;
+  var reviewState = { x: 0.5, y: 0.5, size: 0.38, rotation: 0, zoom: 1 };
+  var manualPhoto = null;
+
+  function updateReviewSelection(){
+    if (!reviewImgEl) return;
+    el.reviewImg.style.transform = "rotate(" + reviewState.rotation + "deg) scale(" + reviewState.zoom + ")";
+    el.reviewWrap.classList.toggle("editing", reviewState.rotation !== 0 || reviewState.zoom !== 1);
+    el.reviewSelection.style.left = (reviewState.x * 100) + "%";
+    el.reviewSelection.style.top = (reviewState.y * 100) + "%";
+    el.reviewSelection.style.width = (reviewState.size * 100) + "%";
+    el.reviewSelection.classList.add("show");
+    el.reviewSize.value = Math.round(reviewState.size * 100);
+    el.reviewSizeValue.textContent = Math.round(reviewState.size * 100) + "%";
+  }
+
+  function rotatePointToOriginal(x, y){
+    var a = -reviewState.rotation * Math.PI / 180, dx = x - 0.5, dy = y - 0.5;
+    return { x: Math.max(0, Math.min(1, 0.5 + dx * Math.cos(a) - dy * Math.sin(a))), y: Math.max(0, Math.min(1, 0.5 + dx * Math.sin(a) + dy * Math.cos(a))) };
+  }
 
   function readExifGps(file){
     return new Promise(function(resolve){
@@ -1590,6 +1754,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   function closeReview(){
     el.photoReview.classList.remove("open");
     el.reviewMarker.classList.remove("show");
+    el.reviewSelection.classList.remove("show");
     if (reviewImgEl && reviewImgEl.url){ URL.revokeObjectURL(reviewImgEl.url); }
     reviewImgEl = null;
   }
@@ -1597,9 +1762,11 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   function openReview(loaded){
     reviewImgEl = loaded;
     el.reviewImg.src = loaded.url;
-    el.reviewHint.textContent = "Nem sikerült automatikusan — koppints a képen közvetlenül a kódra.";
+    reviewState = { x: 0.5, y: 0.5, size: 0.38, rotation: 0, zoom: 1 };
+    el.reviewHint.textContent = "Húzd a zöld kört a kódra; forgathatsz, nagyíthatsz, és a kör méretét is módosíthatod.";
     el.reviewMarker.classList.remove("show");
     el.photoReview.classList.add("open");
+    updateReviewSelection();
   }
 
   var pendingPpid = null;
@@ -1730,27 +1897,44 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     setStatus("Próbáld újra közelebbről, vagy használd a kézi rögzítést.", "warn");
   });
 
-  el.reviewWrap.addEventListener("click", function(ev){
+  function setReviewCenterFromPointer(ev){
     if (!reviewImgEl) return;
     var img = el.reviewImg;
     var rect = img.getBoundingClientRect();
     var relX = ev.clientX - rect.left;
     var relY = ev.clientY - rect.top;
     if (relX < 0 || relY < 0 || relX > rect.width || relY > rect.height) return;
-    var wrapRect = el.reviewWrap.getBoundingClientRect();
-    el.reviewMarker.style.left = (ev.clientX - wrapRect.left) + "px";
-    el.reviewMarker.style.top = (ev.clientY - wrapRect.top) + "px";
-    el.reviewMarker.classList.add("show");
-    var px = relX / rect.width * reviewImgEl.img.naturalWidth;
-    var py = relY / rect.height * reviewImgEl.img.naturalHeight;
+    var p = rotatePointToOriginal(relX / rect.width, relY / rect.height);
+    reviewState.x = p.x; reviewState.y = p.y; updateReviewSelection();
+  }
+  function decodeReviewSelection(){
+    if (!reviewImgEl) return;
+    var W = reviewImgEl.img.naturalWidth, H = reviewImgEl.img.naturalHeight;
+    var p = rotatePointToOriginal(reviewState.x, reviewState.y);
+    var size = Math.max(120, Math.min(W, H) * reviewState.size);
+    var sx = Math.max(0, p.x * W - size / 2), sy = Math.max(0, p.y * H - size / 2);
+    var sw = Math.min(W - sx, size), sh = Math.min(H - sy, size);
     setStatus("Kód keresése a megjelölt pont körül…");
-    runCandidates(pointCandidates(reviewImgEl.img, px, py), function(i, n){
+    var cands = [{ src: reviewImgEl.img, sx:sx, sy:sy, sw:sw, sh:sh, t:1600, rotate:true }].concat(pointCandidates(reviewImgEl.img, p.x * W, p.y * H));
+    runCandidates(cands, function(i, n){
       setStatus("Kód keresése… (" + i + "/" + n + ")");
     }).then(function(hit){
       if (hit) acceptParsed(hit, captureEvidenceImage(reviewImgEl.img), reviewImgEl.photoLocation);
-      else setStatus("Itt sem találtam kódot. Koppints pontosabban a kód közepére, vagy fotózz közelebbről (10–15 cm).", "warn");
+      else setStatus("A kijelölt körben nem találtam kódot. Húzd pontosabban a vonalkódra, növeld a kört, vagy fotózz közelebbről (10–15 cm).", "warn");
     });
+  }
+  el.reviewWrap.addEventListener("click", function(ev){ setReviewCenterFromPointer(ev); });
+  el.reviewSelection.addEventListener("pointerdown", function(ev){
+    ev.preventDefault(); el.reviewSelection.setPointerCapture(ev.pointerId);
+    var move = function(me){ setReviewCenterFromPointer(me); };
+    var up = function(ue){ el.reviewSelection.removeEventListener("pointermove", move); el.reviewSelection.removeEventListener("pointerup", up); };
+    el.reviewSelection.addEventListener("pointermove", move); el.reviewSelection.addEventListener("pointerup", up);
   });
+  el.reviewDecode.addEventListener("click", decodeReviewSelection);
+  el.reviewRotateLeft.addEventListener("click", function(){ reviewState.rotation = (reviewState.rotation - 90) % 360; updateReviewSelection(); });
+  el.reviewZoomIn.addEventListener("click", function(){ reviewState.zoom = Math.min(2.5, Number((reviewState.zoom + .2).toFixed(1))); updateReviewSelection(); });
+  el.reviewZoomOut.addEventListener("click", function(){ reviewState.zoom = Math.max(.6, Number((reviewState.zoom - .2).toFixed(1))); updateReviewSelection(); });
+  el.reviewSize.addEventListener("input", function(){ reviewState.size = Number(el.reviewSize.value) / 100; updateReviewSelection(); });
 
   function stopCamera(){
     if (scanTimer){ clearInterval(scanTimer); scanTimer = null; }
@@ -1787,6 +1971,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   });
 
   var liveBusy = false;
+  var liveCycle = 0;
 
   function onLiveHit(parsed){
     liveBusy = false;
@@ -1810,22 +1995,28 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           }
           // A natív detektor megléte nem jelenti, hogy minden Dell Data Matrix kódot
           // felismer. Sikertelen találatnál ugyanazon a képkockán ZXinggel is próbálkozunk.
-          if (best) onLiveHit(best);
-          else {
-            var side = Math.min(vw, vh) * 0.7;
-            onLiveHit(decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 700));
-          }
+          if (best) onLiveHit(best); else onLiveHit(decodeLiveFallback(vw, vh));
         })
         .catch(function(){
-          var side = Math.min(vw, vh) * 0.7;
-          onLiveHit(decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 700));
+          onLiveHit(decodeLiveFallback(vw, vh));
         });
       return;
     }
 
-    // A Data Matrix apró, ezért a képkocka közepét nagyítva vizsgáljuk.
-    var side = Math.min(vw, vh) * 0.7;
-    onLiveHit(decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 700));
+    onLiveHit(decodeLiveFallback(vw, vh));
+  }
+
+  function decodeLiveFallback(vw, vh){
+    // A Data Matrix a középső négyzetben a legjobb, a dokkoló SVC TAG-je viszont keskeny Code 128.
+    // Három ciklusban váltjuk a négyzetet és a két, elforgatva is vizsgált hosszú sávot.
+    var mode = (liveCycle++ % 3), side = Math.min(vw, vh) * 0.76;
+    if (mode === 0) return decodeRegion(el.video, (vw - side) / 2, (vh - side) / 2, side, side, 900, true);
+    if (mode === 1){
+      var bandH = Math.max(90, vh * 0.34);
+      return decodeRegion(el.video, vw * 0.08, (vh - bandH) / 2, vw * 0.84, bandH, 1500, true);
+    }
+    var bandW = Math.max(90, vw * 0.34);
+    return decodeRegion(el.video, (vw - bandW) / 2, vh * 0.08, bandW, vh * 0.84, 1500, true);
   }
 
   // ---------- export ----------
