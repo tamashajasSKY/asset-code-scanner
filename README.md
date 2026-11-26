@@ -66,6 +66,10 @@ Az adatok nem szinkronizálódnak automatikusan másik készülékre.
 
 > A böngésző adatainak törlése, az alkalmazás tárhelyének ürítése vagy a készülék elvesztése adatvesztést okozhat. Rendszeres teljes ZIP-mentés javasolt.
 
+## Megosztott SharePoint-nyilvántartás
+
+A GitHub-változat tartalmazza az opcionális Microsoft Lists integrációt. A SharePoint-célhely és az Entra ID hozzáférés beállításáig a kapcsoló kikapcsolt állapotban van. Az útmutató rögzíti a listához szükséges mezőket és a kétkészülékes próba menetét. [SharePoint beállítása](docs/sharepoint-sync.md)
+
 ## Mesterlista
 
 A mesterlistának Excel-formátumúnak kell lennie, és tartalmaznia kell egy `Data` nevű munkalapot.
