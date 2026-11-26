@@ -6,12 +6,13 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "vinext build",
+    "dev": "node scripts/prepare-sharepoint-auth.mjs && vinext dev",
+    "build": "node scripts/prepare-sharepoint-auth.mjs && vinext build",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
+    "@azure/msal-browser": "5.30.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"

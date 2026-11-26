@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <title>Microsoft 365 bejelentkezés</title>
+  <script src="./sharepoint-auth/msal-redirect-bridge.min.js"></script>
+</head>
+<body>A Microsoft 365-bejelentkezés befejezése…</body>
+<script>
+  window.msalRedirectBridge.broadcastResponseToMainFrame().catch(function(){
+    document.body.textContent = "A Microsoft 365-bejelentkezés nem zárult le. Térj vissza a címkeolvasóhoz, és próbáld újra.";
+  });
+</script>
+</html>

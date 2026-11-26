@@ -115,6 +115,11 @@ h1,h2,h3,button,.mono{
 .station-suggestions{ display:flex; flex-wrap:wrap; gap:6px; }
 .station-suggestions:empty{ display:none; }
 .station-suggestions .btn{ min-height:40px; padding:5px 10px; }
+.sync-panel[hidden],.sync-panel [hidden]{ display:none; }
+.sync-panel h2{ margin:0; font-size:17px; }
+.sync-panel p{ margin:0; line-height:1.4; }
+.sync-actions{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.sync-meta{ display:block; margin-top:3px; color:var(--ink-muted); font-weight:600; }
 .review-result{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
 .review-result:empty{ display:none; }
 .review-result .btn{ font-family:'IBM Plex Mono',monospace; }
@@ -369,6 +374,17 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   </div>
 
   <div class="runtime-warning" id="runtimeWarning" role="alert"></div>
+  <section class="settings sync-panel" id="sharePointPanel" aria-labelledby="sharePointTitle" hidden>
+    <h2 id="sharePointTitle">Közös SharePoint-nyilvántartás</h2>
+    <p id="sharePointStatus" role="status">A kapcsolat előkészítése…</p>
+    <div class="sync-actions">
+      <button type="button" class="btn btn-primary" id="sharePointConnect" disabled>Microsoft 365-bejelentkezés</button>
+      <button type="button" class="btn btn-secondary" id="sharePointRetry" disabled>Szinkronizálás most</button>
+      <button type="button" class="btn btn-secondary" id="sharePointDisconnect" hidden>Szüneteltetés</button>
+      <a id="sharePointList" class="btn btn-secondary" target="_blank" rel="noopener noreferrer" hidden>Közös lista megnyitása</a>
+    </div>
+    <p class="field-hint">Az első kapcsolódás után az új tételek és fotók a közös listába kerülnek. A helyi törlés a közös listát és a feltöltésre váró tételeket nem érinti.</p>
+  </section>
 
   <div class="settings">
     <div class="station-heading">
@@ -454,7 +470,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       <div class="review-result" id="reviewResults"></div>
       <button type="button" class="btn btn-secondary" id="reviewCancel">Bezárás</button>
     </div>
-    <p class="storage-note"><strong>Helyi tárolás:</strong> a beolvasások és a hozzájuk kapcsolt fényképek ezen a készüléken, a böngésző helyi tárhelyén maradnak. A letöltött Excel- és CSV-fájlok a telefon <strong>Letöltések / Downloads</strong> mappájába kerülnek. A böngésző helyi tárhelye nem rendelkezik külön, megnyitható mappaelérési úttal.</p>
+    <p class="storage-note"><strong>Helyi példány:</strong> a böngésző ezen a készüléken is tárolja a beolvasásokat és a hozzájuk kapcsolt fényképeket. A letöltött Excel- és CSV-fájlok a telefon <strong>Letöltések / Downloads</strong> mappájába kerülnek.</p>
     <div class="ppid-panel" id="ppidPanel">
       <p class="ppid-title">Ez PPID kód, nem service tag</p>
       <div class="ppid-code" id="ppidValue"></div>
@@ -555,6 +571,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
 
   // ---------- state ----------
   var scans = [];              // {id, serviceTag, deviceType, timestamp, scannedBy, source}
+  var sharePointSync = null;
+  function stageSharePoint(record, isNew){
+    if (sharePointSync) sharePointSync.stage(record, isNew);
+  }
   var sharedMode = false;
   var readOnly = false;
   var artifactCap = null;
@@ -665,7 +685,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
   };
 
   // ---------- utils ----------
-  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function uid(){ return window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
   function nowIso(){ return new Date().toISOString(); }
   function fmtTime(iso){
     try{
@@ -954,6 +974,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
           : s.masterMatch === false
             ? "<span class=\"master-info no\">Mesterlista: nem szerepel</span>"
             : "<span class=\"master-info unknown\">Mesterlista: nincs ellenőrzési eredmény</span>";
+        var syncLabel = sharePointSync ? sharePointSync.label(s.id) : "";
         var typeWarning = s.typeMismatch
           ? "<span class=\"type-warning\">Típuseltérés: kijelölt „" + escapeHtml(s.selectedDeviceType || "") + "”, mesterlista: „" + escapeHtml(s.masterDeviceType || s.deviceType || "") + "”</span>"
           : "";
@@ -964,7 +985,8 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
               "<div class=\"tag-val\">" + escapeHtml(s.serviceTag) + "</div>" +
               "<div class=\"meta\">" + escapeHtml(s.deviceType) + " &middot; " + escapeHtml(fmtTime(s.timestamp)) + " &middot; " + escapeHtml(s.scannedBy)
                 + ([s.seat, s.assignee].some(Boolean) ? "<br>" + escapeHtml([s.seat, s.assignee].filter(Boolean).join(" · ")) : "")
-                + (s.ppid && s.ppid !== s.serviceTag ? "<br>PPID: " + escapeHtml(s.ppid) : "") + locationMeta + masterInfo + typeWarning + "</div>" +
+                + (s.ppid && s.ppid !== s.serviceTag ? "<br>PPID: " + escapeHtml(s.ppid) : "") + locationMeta + masterInfo + typeWarning
+                + (syncLabel ? "<span class=\"sync-meta\">" + escapeHtml(syncLabel) + "</span>" : "") + "</div>" +
             "</div>" +
             kindBadge +
             matchBadge +
@@ -1027,6 +1049,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
         capturedAt: nowIso(),
         source: "Készülék"
       };
+      stageSharePoint(record, false);
       persist();
       renderList();
     }, function(){
@@ -1100,6 +1123,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       masterWasAlreadyVerified: matchResult && matchResult.found ? matchResult.alreadyVerified : null
     };
     scans.unshift(record);
+    stageSharePoint(record, true);
     renderList();
     persist();
     captureEvidenceLocation(record);
@@ -1549,6 +1573,7 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
     s.masterMatch = r ? r.found : null; s.masterDeviceType = r && r.deviceType ? r.deviceType : "";
     s.typeMismatch = !!(r && r.found && hasTypeMismatch(s.selectedDeviceType, s.masterDeviceType));
     s.deviceType = s.masterDeviceType || s.selectedDeviceType;
+    stageSharePoint(s, false);
     persist(); renderList(); closeEditDialog();
     setStatus(s.typeMismatch ? "Mentve. ⚠ A mesterlista szerinti eszköztípus eltér a kijelölttől." : "A beolvasás adatai és mesterlista-ellenőrzése frissítve.", s.typeMismatch ? "warn" : "success");
   });
@@ -1706,7 +1731,10 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       s.masterMatch = r ? r.found : null;
       s.masterDeviceType = r && r.deviceType ? r.deviceType : "";
       s.typeMismatch = !!(r && r.found && hasTypeMismatch(s.selectedDeviceType || s.deviceType, s.masterDeviceType));
-      if (r && r.deviceType) s.deviceType = r.deviceType;
+      if (r && r.deviceType && s.deviceType !== r.deviceType){
+        s.deviceType = r.deviceType;
+        stageSharePoint(s, false);
+      }
     });
     persist(); renderList();
     setStatus("A beolvasások mesterlista-ellenőrzése frissítve. A típusfigyelmeztetés a lista sorának adata alapján készül.", "success");
@@ -2555,6 +2583,11 @@ footer.appfoot .btn-secondary{ min-height:40px; padding:9px 14px; font-size:13.5
       if (migrateScans()) persist();
       renderList();
       renderMaster();
+      if (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1"){
+        import("./sharepoint-sync.mjs").then(function(module){
+          return module.startSharePointSync(document.getElementById("sharePointPanel"), renderList);
+        }).then(function(sync){ sharePointSync = sync; renderList(); }).catch(function(){});
+      }
     });
 
 })();
