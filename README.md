@@ -14,6 +14,7 @@ Az alkalmazás több gyártó eszközeivel használható. Dell módban további 
 - Fénykép forgatása, nagyítása és kicsinyítése
 - Kézzel mozgatható és méretezhető beolvasási terület
 - Manuális azonosítórögzítés fényképpel
+- Munkaállomásonkénti rögzítés ülőhellyel, használónévvel és korábbi értékekből adott javaslatokkal
 - Korábban rögzített adatok módosítása
 - Fényképek és GPS-koordináták tárolása
 - Dell és nem Dell eszközök elkülönített kezelése
@@ -84,16 +85,13 @@ A korábbi beolvasások mesterlista-ellenőrzése később ismét lefuttatható.
 
 Az élő kamera használatához az alkalmazást HTTPS-kapcsolaton keresztül kell megnyitni.
 
-1. Add meg a beolvasó nevét.
-2. Válaszd ki az eszköz típusát.
-3. Válaszd ki, hogy Dell vagy nem Dell eszközről van szó.
-4. Indítsd el a kamerát.
-5. Tartsd a vonalkódot a kijelölt területen belül.
-6. Ha az élő beolvasás nem sikerül, készíts fényképet.
-7. A fényképet szükség szerint forgasd vagy nagyítsd.
-8. Húzd a beolvasási területet közvetlenül a kódra.
+1. Add meg az ülőhely azonosítóját és a használó nevét. A korábban rögzített értékekből az alkalmazás javaslatot ad. Egyértelmű egyezésnél kitölti a másik mezőt, ha az üres.
+2. Válaszd ki az eszköz típusát és gyártóját. Indítsd el a kamerát, vagy használd a kiemelt kézi azonosítómezőt.
+3. Dell dokkolónál a **Beolvasás fotóval** után forgasd vízszintesre a címkét, és húzd a keretet a rövid vonalkódra vagy a nyomtatott `SVC TAG` sorra.
+4. Válaszd a vonalkód- vagy a szövegbeolvasást. Szövegbeolvasásnál ellenőrizd a felismert Service Tag-et a címkén, majd koppints a találatra a rögzítéshez.
+5. Olvasd be a munkaállomás többi eszközét ugyanezekkel az ülőhely- és névadatokkal. A következő helyszínnél koppints az **Új munkaállomás** gombra.
 
-Dell dokkoló esetén a `SVC TAG` felirat melletti rövid vonalkódot kell megcélozni.
+Az ülőhely és a használó az Excel- és CSV-exportban külön oszlopban szerepel, és a ZIP-mentés része is.
 
 ## Export és biztonsági mentés
 
@@ -159,7 +157,7 @@ A build eredménye a generált `dist` könyvtárba kerül. A `node_modules`, `di
 ## Ismert korlátozások
 
 - A kamerás felismerés pontossága függ a telefon kamerájától, fókuszától, a megvilágítástól és a vonalkód méretétől.
-- A nyomtatott szöveg automatikus OCR-felismerése még nem része az alkalmazásnak.
+- A kijelölt fényképrész helyi szövegfelismerése a nyomtatott Dell Service Tag-re készült. A felismerés futtatásához szükséges összetevők letöltéséhez internetkapcsolat kell.
 - A helyi adatok nem szinkronizálódnak más készülékekkel.
 - A böngésző helyi tárhelyének kapacitása korlátozott.
 - A Dell garanciaadatok automatikus lekérdezéséhez Dell TechDirect API-hozzáférés és biztonságos backend szükséges.
@@ -168,7 +166,6 @@ A build eredménye a generált `dist` könyvtárba kerül. A `node_modules`, `di
 
 ## Tervezett fejlesztések
 
-- OCR-alapú nyomtatott azonosító-felismerés
 - Központi adatbázis
 - Többkészülékes szinkronizálás
 - Felhasználói bejelentkezés és jogosultságkezelés
